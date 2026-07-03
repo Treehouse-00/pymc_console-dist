@@ -1,313 +1,118 @@
-# pyMC UI Release Guide
+# OpenHop Console Release Process
 
-Complete guide for developers to create and publish new releases of the pyMC UI.
+This repository is the distribution wrapper for OpenHop Console. The preferred dashboard release asset is:
 
-## Table of Contents
-- [Quick Release Steps](#quick-release-steps)
-- [Understanding the Release Process](#understanding-the-release-process)
-- [Manual Build Process](#manual-build-process)
-- [Troubleshooting](#troubleshooting)
-- [Version Numbering](#version-numbering)
-
----
-
-## Quick Release Steps
-
-For experienced developers, here's the TL;DR:
-
-```bash
-cd pymc_console/frontend
-
-# 1. Update version (creates git tag automatically if configured)
-npm version patch
-
-# 2. Push changes and tag
-git push origin main
-git push origin --tags
-
-# Done! Check GitHub Actions for build status
+```text
+openhop-console-ui-latest.tar.gz
 ```
 
----
+`manage.sh install` downloads that asset from the latest GitHub Release, strictly validates it, installs it into `/opt/openhop_console/web/html`, patches `/etc/openhop_repeater/config.yaml`, and restarts `openhop-repeater.service`.
 
-## Understanding the Release Process
-
-### What Happens Automatically
-
-This project uses **GitHub Actions** for continuous integration and deployment:
-
-#### On Every Push to `main` or `dev`:
-- ✅ Installs dependencies
-- ✅ Builds static files (`npm run build:static`)
-- ✅ Creates versioned `.tar.gz` and `.zip` archives
-- ✅ Uploads build artifacts to GitHub (available for 30 days)
-- ❌ Does NOT create a GitHub Release
-
-#### On Version Tag Push (e.g., `v0.1.1`):
-- ✅ Everything above, PLUS
-- ✅ Creates a GitHub Release
-- ✅ Attaches downloadable archives to the release
-- ✅ Generates automatic release notes from commits
-
-### The Workflow File
-
-Located at: `.github/workflows/build-ui.yml`
-
-This workflow has two jobs:
-1. **build** - Runs on all pushes and PRs
-2. **release** - Only runs when a tag starting with `v` is pushed
-
----
-
-## Detailed Release Steps
-
-### Step 1: Make Your Changes
-
-Work on your feature branch as normal:
-```bash
-git checkout -b feature/my-new-feature
-# ... make changes ...
-git add .
-git commit -m "feat: add awesome new feature"
-git push origin feature/my-new-feature
-```
-
-Create a PR, get it reviewed, and merge to `main`.
-
-### Step 2: Decide on Version Number
-
-Use [Semantic Versioning](https://semver.org/):
-- **MAJOR** (`1.0.0` → `2.0.0`) - Breaking changes
-- **MINOR** (`0.1.0` → `0.2.0`) - New features, backwards compatible
-- **PATCH** (`0.1.1` → `0.1.2`) - Bug fixes only
-
-### Step 3: Update Version
-
-Navigate to the frontend directory:
-```bash
-cd pymc_console/frontend
-```
-
-Run the appropriate npm version command:
-```bash
-# For bug fixes
-npm version patch
-
-# For new features
-npm version minor
-
-# For breaking changes
-npm version major
-
-# For pre-releases
-npm version prerelease --preid=beta
-```
-
-**What this does:**
-- Updates `version` in `package.json` and `package-lock.json`
-- Creates a git commit with message like "0.1.2"
-- Creates a git tag like `v0.1.2` (if git is configured properly)
-
-### Step 4: Push Changes and Tags
-
-Push your version commit:
-```bash
-git push origin main
-```
-
-Push the tag to trigger the release:
-```bash
-git push origin --tags
-```
-
-Or push a specific tag:
-```bash
-git push origin v0.1.2
-```
-
-### Step 5: Monitor the Release
-
-1. Go to your repository on GitHub
-2. Click the **Actions** tab
-3. You should see a workflow running for your tag
-4. Wait for both jobs (build and release) to complete
-
-### Step 6: Verify the Release
-
-Once the workflow completes:
-
-1. Go to the **Releases** section of your GitHub repo
-2. You should see your new release (e.g., `v0.1.2`)
-3. It should have two attached files:
-   - `pymc-ui-v0.1.2.tar.gz`
-   - `pymc-ui-v0.1.2.zip`
-4. Release notes are auto-generated from commit messages
-
----
-
-## Manual Build Process
-
-If you need to build locally without creating a release:
+Until native OpenHop UI assets are published, users can explicitly allow temporary legacy fallback assets:
 
 ```bash
-cd pymc_console/frontend
-
-# Install dependencies (first time only)
-npm install
-
-# Build static files
-npm run build:static
+OPENHOP_ALLOW_LEGACY_UI=1 ./manage.sh install
 ```
 
-The output will be in `frontend/dist/` directory.
+That mode still installs the OpenHop backend and still uses `/opt/openhop_console/web/html`, but the browser dashboard may show old pyMC branding/text. The installer prints warnings when this compatibility mode is used.
 
-### What the Build Does
+## Build And Publish The Dashboard
 
-1. `vite build` - Compiles React app to static HTML/CSS/JS
-2. Outputs to `frontend/out/`
-3. Copies `out/` contents to `frontend/dist/`
+Use GitHub Actions:
 
----
+1. Open `Actions` -> `Build and Release OpenHop Console UI`.
+2. Run the workflow manually.
+3. Use the default source unless you intentionally override it:
 
-## Troubleshooting
+   ```text
+   source_repo: openhop-dev/openHop_RepeaterUI
+   source_ref: main
+   source_path: .
+   build_command: npm run build
+   release_tag: latest
+   ```
 
-### "Release job was skipped"
+The workflow checks out this wrapper plus the UI source repository, runs `scripts/prepare-openhop-ui-source.sh`, builds the static UI with Node 22, validates the output with `scripts/validate-ui-assets.sh`, packages `openhop-console-ui-latest.tar.gz`, extracts and validates the tarball again, then uploads it to the selected GitHub Release.
 
-**Problem:** You pushed code but no GitHub Release was created.
+The workflow cache dependency path must not contain `./` or `..` path segments. Use a valid pattern such as:
 
-**Solution:** The release job only runs for version tags. Make sure you:
-1. Created a tag with `npm version` or `git tag v0.1.x`
-2. Pushed the tag with `git push origin --tags`
-3. The tag name starts with `v` (e.g., `v0.1.2`, not `0.1.2`)
-
-### "Build failed: npm ERR! code ELIFECYCLE"
-
-**Problem:** The build process failed.
-
-**Solution:** 
-1. Pull the latest code: `git pull origin main`
-2. Clean install locally: `cd frontend && rm -rf node_modules package-lock.json && npm install`
-3. Test build locally: `npm run build:static`
-4. Fix any errors before pushing
-
-### "Tag already exists"
-
-**Problem:** You tried to create a tag that already exists.
-
-**Solution:**
-```bash
-# Delete local tag
-git tag -d v0.1.2
-
-# Delete remote tag (if already pushed)
-git push origin :refs/tags/v0.1.2
-
-# Create new tag
-npm version patch
-git push origin --tags
+```yaml
+cache-dependency-path: ui-source/**/package-lock.json
 ```
 
-### "Permission denied" when creating release
+The legacy `pymc-ui-latest.tar.gz` asset is optional and should only be uploaded when needed for old installers. It is copied from the same validated OpenHop bundle.
 
-**Problem:** GitHub Actions doesn't have permission to create releases.
+## Source Repository Note
 
-**Solution:** The workflow already has `permissions: contents: write` set. Check your repository settings:
-1. Go to Settings → Actions → General
-2. Under "Workflow permissions", ensure "Read and write permissions" is selected
+This distribution repository does not contain a complete frontend source tree; its local `frontend/dist` is a fallback only. The public OpenHop UI source identified for the release workflow is:
 
----
+```text
+https://github.com/openhop-dev/openHop_RepeaterUI
+```
 
-## Version Numbering
+If a different canonical UI source is restored later, set `source_repo`, `source_ref`, and `source_path` in the workflow dispatch inputs instead of editing the installer.
 
-### Semantic Versioning Format
+## Local Checks
 
-`MAJOR.MINOR.PATCH` (e.g., `0.1.2`)
-
-### When to Increment Each Part
-
-| Change Type | Example | Command | Version Change |
-|-------------|---------|---------|----------------|
-| Bug fix | Fix broken map display | `npm version patch` | `0.1.1` → `0.1.2` |
-| New feature | Add dark mode | `npm version minor` | `0.1.2` → `0.2.0` |
-| Breaking change | Require new API version | `npm version major` | `0.2.0` → `1.0.0` |
-| Pre-release | Beta testing | `npm version prerelease --preid=beta` | `0.1.2` → `0.1.3-beta.0` |
-
-### Pre-release Tags
-
-For alpha, beta, or release candidate versions:
+Before merging wrapper changes:
 
 ```bash
-# First beta
-npm version 0.2.0-beta.1
-
-# Subsequent betas
-npm version prerelease --preid=beta  # 0.2.0-beta.2
-
-# Release candidate
-npm version 0.2.0-rc.1
-
-# Final release
-npm version 0.2.0
+bash -n manage.sh
+bash -n scripts/validate-ui-assets.sh
+bash -n scripts/prepare-openhop-ui-source.sh
+bash scripts/test-ui-asset-validation.sh
 ```
 
-Pre-releases are automatically marked as "Pre-release" on GitHub.
-
----
-
-## End User Deployment
-
-Once a release is published, end users can deploy it:
-
-### Download and Extract
+Strict OpenHop validation should reject stale pyMC-branded assets:
 
 ```bash
-# Download latest release
-wget https://github.com/dmduran12/pymc_console/releases/download/v0.2.0/pymc-ui-v0.2.0.tar.gz
-
-# Extract to pyMC_Repeater's web directory
-tar -xzf pymc-ui-v0.2.0.tar.gz -C /opt/pymc_repeater/repeater/web/html/
-
-# Or use zip
-unzip pymc-ui-v0.2.0.zip -d /opt/pymc_repeater/repeater/web/html/
+bash scripts/validate-ui-assets.sh frontend/dist "local frontend/dist"
 ```
 
-### Configure Backend
-
-The backend (pyMC_API) should be configured to serve these static files. Users control where they deploy the UI files.
-
----
-
-## Quick Reference Commands
+Temporary legacy validation should accept the bundled fallback only when explicitly requested:
 
 ```bash
-# View current version
-cat frontend/package.json | grep version
-
-# List all tags
-git tag --list
-
-# View latest tag
-git describe --tags --abbrev=0
-
-# Delete local tag
-git tag -d v0.1.2
-
-# Delete remote tag
-git push origin :refs/tags/v0.1.2
-
-# Create tag manually (if npm version didn't work)
-git tag v0.1.2
-git push origin v0.1.2
-
-# Check GitHub Actions status
-# Visit: https://github.com/dmduran12/pymc_console/actions
+OPENHOP_UI_VALIDATION_MODE=legacy bash scripts/validate-ui-assets.sh frontend/dist "local frontend/dist"
 ```
 
----
+Stale pyMC-branded assets must not be published as `openhop-console-ui-latest.tar.gz`. They can only be used as temporary install fallback with `OPENHOP_ALLOW_LEGACY_UI=1`.
 
-## Need Help?
+## Install Verification
 
-- Check GitHub Actions logs for detailed error messages
-- Review commit messages to ensure they follow conventions
-- Test builds locally before pushing tags
-- Ask in the project's discussion forum or issues section
+On a clean Debian LXC or Debian host:
+
+```bash
+apt update
+apt install -y git ca-certificates
+cd /opt
+git clone https://github.com/matthew73210/pymc_console-dist.git openhop_console
+cd openhop_console
+./manage.sh --yes install
+```
+
+If the OpenHop release asset has not been published yet:
+
+```bash
+OPENHOP_ALLOW_LEGACY_UI=1 ./manage.sh --yes install
+```
+
+Confirm the wrapper installed both OpenHop Repeater and the Console dashboard:
+
+```bash
+test -d /opt/openhop_repeater
+test -f /etc/openhop_repeater/config.yaml
+test -d /opt/openhop_console/web/html
+systemctl status openhop-repeater --no-pager
+ss -ltnp | grep ':8000'
+grep -R '/opt/openhop_console/web/html' /etc/openhop_repeater/config.yaml
+```
+
+Then load:
+
+```text
+http://<host-or-lxc-ip>:8000/
+```
+
+## Compatibility Boundaries
+
+Do not rename upstream `pymc_core`, `pymc_usb`, or `pymc_tcp` identifiers unless upstream publishes corresponding OpenHop package/API names. Those are backend compatibility details. Browser-visible pyMC branding, stale `/opt/pymc_*` paths, and stale `/etc/pymc_*` paths must be removed from release assets.

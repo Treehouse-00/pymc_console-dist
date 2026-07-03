@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>pyMC Console</title>
+    <title>OpenHop Console</title>
     <meta name="description" content="LoRa Mesh Network Repeater Monitoring Dashboard" />
     
     <!-- Favicon: SVG for modern browsers, fallback prevents 404 -->
@@ -15,7 +15,7 @@
     <script>
       (function() {
         try {
-          // Try new key first, fall back to legacy key for migration
+          // Keep the legacy pyMC storage keys so existing browser themes migrate cleanly.
           var scheme = localStorage.getItem('pymc-color-scheme');
           if (!scheme) {
             // Migration: read legacy key and map to color scheme

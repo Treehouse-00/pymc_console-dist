@@ -1,60 +1,160 @@
-# Build Validation (Private Repo)
-#
-# This workflow validates that dist/ exists and is properly built.
-# The actual public release is handled by sync-to-public.yml which
-# builds from source and pushes to the public distribution repo.
-#
-# For local development with proprietary files:
-#   npm run build:static  (builds and packages dist/)
-
-name: Build Validation
+name: Build and Release OpenHop Console UI
 
 on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: UI source repository to build
+        required: true
+        default: openhop-dev/openHop_RepeaterUI
+      source_ref:
+        description: Branch, tag, or SHA from the UI source repository
+        required: true
+        default: main
+      source_path:
+        description: Path inside the source repo containing package.json
+        required: true
+        default: .
+      build_command:
+        description: Command to build static assets
+        required: true
+        default: npm run build
+      release_tag:
+        description: Release tag to update; use latest to update the current latest release
+        required: true
+        default: latest
+      upload_legacy_asset:
+        description: Also upload pymc-ui-latest.tar.gz after validation
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
   push:
     branches:
       - main
-      - dev
   pull_request:
     branches:
       - main
-      - dev
+
+permissions:
+  contents: write
+
+env:
+  OPENHOP_ASSET_NAME: openhop-console-ui-latest.tar.gz
+  LEGACY_ASSET_NAME: pymc-ui-latest.tar.gz
 
 jobs:
-  validate:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    
+    timeout-minutes: 20
+
     steps:
-      - name: Checkout code
+      - name: Checkout wrapper
         uses: actions/checkout@v4
-      
-      - name: Verify dist exists
+        with:
+          path: wrapper
+
+      - name: Checkout UI source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.inputs.source_repo || 'openhop-dev/openHop_RepeaterUI' }}
+          ref: ${{ github.event.inputs.source_ref || 'main' }}
+          path: ui-source
+          token: ${{ secrets.SOURCE_REPO_TOKEN || github.token }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui-source/**/package-lock.json
+
+      - name: Prepare source for OpenHop
         run: |
-          if [ ! -d "frontend/dist" ] || [ ! -f "frontend/dist/index.html" ]; then
-            echo "ERROR: frontend/dist/ not found or incomplete."
-            echo "Build locally with 'npm run build:static' before pushing."
+          source_path="ui-source/${{ github.event.inputs.source_path || '.' }}"
+          bash wrapper/scripts/prepare-openhop-ui-source.sh "$source_path" dist
+
+      - name: Install dependencies
+        working-directory: ui-source/${{ github.event.inputs.source_path || '.' }}
+        run: npm ci
+
+      - name: Build UI
+        working-directory: ui-source/${{ github.event.inputs.source_path || '.' }}
+        run: ${{ github.event.inputs.build_command || 'npm run build' }}
+
+      - name: Package and validate asset
+        run: |
+          set -euo pipefail
+          source_path="ui-source/${{ github.event.inputs.source_path || '.' }}"
+          build_dir="$source_path/dist"
+          package_dir="$RUNNER_TEMP/openhop-console-ui"
+
+          if [ ! -d "$build_dir" ]; then
+            echo "ERROR: build output not found at $build_dir"
             exit 1
           fi
-          echo "✓ Pre-built dist/ found"
-          ls -la frontend/dist/
-      
-      - name: Get version info
-        run: |
-          VERSION=$(node -p "require('./frontend/package.json').version")
-          echo "Version: $VERSION"
-          
-          if [ -f "frontend/dist/VERSION" ]; then
-            DIST_VERSION=$(cat frontend/dist/VERSION)
-            echo "Dist version: $DIST_VERSION"
-            if [ "$VERSION" != "$DIST_VERSION" ]; then
-              echo "⚠️  Warning: package.json version ($VERSION) differs from dist VERSION ($DIST_VERSION)"
-              echo "Consider rebuilding with 'npm run build:static'"
-            fi
+
+          rm -rf "$package_dir"
+          mkdir -p "$package_dir"
+          cp -a "$build_dir"/. "$package_dir"/
+
+          version="$(node -p "require('./$source_path/package.json').version" 2>/dev/null || echo unknown)"
+          printf '%s\n' "$version" > "$package_dir/VERSION"
+
+          bash wrapper/scripts/validate-ui-assets.sh "$package_dir" "built OpenHop Console UI"
+
+          tar -C "$package_dir" -czf "$OPENHOP_ASSET_NAME" .
+
+          verify_dir="$RUNNER_TEMP/openhop-console-ui-verify"
+          rm -rf "$verify_dir"
+          mkdir -p "$verify_dir"
+          tar -xzf "$OPENHOP_ASSET_NAME" -C "$verify_dir"
+          bash wrapper/scripts/validate-ui-assets.sh "$verify_dir" "$OPENHOP_ASSET_NAME"
+
+          if [ "${{ github.event.inputs.upload_legacy_asset || 'false' }}" = "true" ]; then
+            cp "$OPENHOP_ASSET_NAME" "$LEGACY_ASSET_NAME"
           fi
-      
-      - name: Upload build artifacts (for inspection)
+
+      - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pymc-ui-${{ github.ref_name }}
-          path: frontend/dist/
-          retention-days: 7
+          name: openhop-console-ui
+          path: |
+            openhop-console-ui-latest.tar.gz
+            pymc-ui-latest.tar.gz
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Publish GitHub Release asset
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          requested_tag="${{ github.event.inputs.release_tag || 'latest' }}"
+
+          if [ "$requested_tag" = "latest" ]; then
+            if gh release view --json tagName --jq .tagName >/tmp/openhop-release-tag 2>/dev/null; then
+              release_tag="$(cat /tmp/openhop-release-tag)"
+            else
+              release_tag="latest"
+              gh release create "$release_tag" \
+                --title "Latest OpenHop Console UI" \
+                --notes "Latest validated OpenHop Console dashboard assets."
+            fi
+          else
+            release_tag="$requested_tag"
+            if ! gh release view "$release_tag" >/dev/null 2>&1; then
+              gh release create "$release_tag" \
+                --title "OpenHop Console UI ${release_tag}" \
+                --notes "Validated OpenHop Console dashboard assets."
+            fi
+          fi
+
+          gh release upload "$release_tag" "$OPENHOP_ASSET_NAME" --clobber
+
+          if [ -f "$LEGACY_ASSET_NAME" ]; then
+            gh release upload "$release_tag" "$LEGACY_ASSET_NAME" --clobber
+          fi
