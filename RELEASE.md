@@ -51,19 +51,25 @@ test "$(cat frontend/dist/VERSION)" = "$(node -p "require('./package.json').vers
 
 ## Install Verification
 
-On a Debian LXC or Debian host with OpenHop Repeater installed:
+On a clean Debian LXC or Debian host:
 
 ```bash
-sudo bash manage.sh --yes install
-sudo systemctl status openhop-repeater
-sudo journalctl -u openhop-repeater -n 100
+apt update
+apt install -y git ca-certificates
+git clone https://github.com/matthew73210/pymc_console-dist.git openhop_console
+cd openhop_console
+./manage.sh --yes install
 ```
 
-Confirm `/etc/openhop_repeater/config.yaml` contains:
+Confirm the wrapper installed both OpenHop Repeater and the Console dashboard:
 
-```yaml
-web:
-  web_path: /opt/openhop_console/web/html
+```bash
+test -d /opt/openhop_repeater
+test -f /etc/openhop_repeater/config.yaml
+test -d /opt/openhop_console/web/html
+systemctl status openhop-repeater --no-pager
+ss -ltnp | grep ':8000'
+grep -R '/opt/openhop_console/web/html' /etc/openhop_repeater/config.yaml
 ```
 
 Then load:
@@ -77,8 +83,9 @@ http://<host-or-lxc-ip>:8000/
 For a legacy install, verify the wrapper migrates only wrapper-owned paths:
 
 ```bash
-test ! -d /opt/pymc_console || sudo bash manage.sh --yes upgrade
+test ! -d /opt/pymc_console || ./manage.sh --yes upgrade
 grep -R '/opt/pymc_console' /etc/openhop_repeater/config.yaml /etc/pymc_repeater/config.yaml 2>/dev/null || true
+grep -R '/opt/openhop_console/web/html' /etc/openhop_repeater/config.yaml
 ```
 
 Do not rename upstream `pymc_core` references unless upstream publishes a corresponding `openhop_core` Python package/import. As of the current upstream metadata inspected for this change, the `openhop_core` repository still declares the Python project as `pymc_core`.

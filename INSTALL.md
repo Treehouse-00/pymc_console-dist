@@ -1,115 +1,134 @@
 # Installing OpenHop Console
 
-This guide covers manual installation of the Console dashboard. For the normal workflow, use [README.md](README.md) and `manage.sh`.
+OpenHop Console is a wrapper installer. Its `manage.sh install` command installs and configures both:
 
-## Prerequisite
+- OpenHop Repeater backend
+- OpenHop Console dashboard assets
 
-Install upstream OpenHop Repeater first:
+You do not need to install `openhop-dev/openhop_repeater` separately for the normal install path.
+
+## Normal Install: Debian LXC
+
+Start from a fresh Debian LXC.
+
+Install only the minimum tools needed to fetch this wrapper:
 
 ```bash
-git clone https://github.com/openhop-dev/openhop_repeater.git
-cd openhop_repeater
-sudo ./manage.sh install
+apt update
+apt install -y git ca-certificates
 ```
 
-Verify the current OpenHop paths:
-
-```bash
-ls /opt/openhop_repeater/pyproject.toml
-ls /etc/openhop_repeater/config.yaml
-systemctl status openhop-repeater
-```
-
-## Using manage.sh
+Clone and run this wrapper:
 
 ```bash
 git clone https://github.com/matthew73210/pymc_console-dist.git openhop_console
 cd openhop_console
-sudo ./manage.sh install
+./manage.sh install
 ```
 
-This downloads the latest Console release, extracts it to `/opt/openhop_console/web/html`, and patches `web.web_path` in `/etc/openhop_repeater/config.yaml`.
+If you are not root, `manage.sh` re-runs itself with `sudo` when available. If neither root nor `sudo` is available, run the command as root.
 
-## Manual Install
+## What manage.sh install Does
 
-If you do not want to use `manage.sh`, install the release tarball directly:
+The installer automatically:
+
+- installs Debian packages needed by the wrapper and repeater,
+- fetches `openhop-dev/openhop_repeater`,
+- installs OpenHop Repeater into `/opt/openhop_repeater`,
+- creates or updates `/etc/openhop_repeater/config.yaml`,
+- installs, enables, and starts `openhop-repeater.service`,
+- installs Console assets into `/opt/openhop_console/web/html`,
+- patches `web.web_path` to `/opt/openhop_console/web/html`,
+- restarts the repeater,
+- prints the LAN URL.
+
+Fresh installs start with `radio_type: null`, which lets the web UI come up before serial or SPI radio hardware is passed through and configured.
+
+## Verify The Install
 
 ```bash
-cd /tmp
-if wget https://github.com/matthew73210/pymc_console-dist/releases/latest/download/openhop-console-ui-latest.tar.gz; then
-  archive=openhop-console-ui-latest.tar.gz
-else
-  wget https://github.com/matthew73210/pymc_console-dist/releases/latest/download/pymc-ui-latest.tar.gz
-  archive=pymc-ui-latest.tar.gz
-fi
-
-sudo mkdir -p /opt/openhop_console/web/html
-sudo tar -xzf "$archive" -C /opt/openhop_console/web/html/
-
-sudo chown -R repeater:repeater /opt/openhop_console
-sudo yq -i '.web.web_path = "/opt/openhop_console/web/html"' /etc/openhop_repeater/config.yaml
-sudo systemctl restart openhop-repeater
+test -d /opt/openhop_repeater
+test -f /etc/openhop_repeater/config.yaml
+test -d /opt/openhop_console/web/html
+systemctl status openhop-repeater --no-pager
+ss -ltnp | grep ':8000'
+grep -R "/opt/openhop_console/web/html" /etc/openhop_repeater/config.yaml
 ```
 
-The dashboard is served at:
+Open the dashboard at:
 
 ```text
-http://<host-or-lxc-ip>:8000/
+http://<lxc-ip>:8000/
 ```
 
-## Manual Update
+OpenHop Repeater listens on `0.0.0.0:8000` by default. If the UI is not reachable from the LAN, check the LXC network, Proxmox firewall rules, and any Debian firewall.
+
+## Upgrade
 
 ```bash
-cd /tmp
-if wget https://github.com/matthew73210/pymc_console-dist/releases/latest/download/openhop-console-ui-latest.tar.gz; then
-  archive=openhop-console-ui-latest.tar.gz
-else
-  wget https://github.com/matthew73210/pymc_console-dist/releases/latest/download/pymc-ui-latest.tar.gz
-  archive=pymc-ui-latest.tar.gz
-fi
-
-sudo cp -r /opt/openhop_console/web/html /opt/openhop_console/web/html.backup
-sudo rm -rf /opt/openhop_console/web/html/*
-sudo tar -xzf "$archive" -C /opt/openhop_console/web/html/
-sudo chown -R repeater:repeater /opt/openhop_console
+cd openhop_console
+./manage.sh upgrade
 ```
 
-No service restart is required for asset-only updates. Hard-refresh the browser if it still shows a stale bundle.
+`upgrade` updates or reinstalls the OpenHop Repeater backend from the configured upstream ref and refreshes the Console dashboard assets.
 
-## Debian LXC Checks
-
-Inside a Proxmox Debian LXC:
+## Useful Overrides
 
 ```bash
-hostname -I
-sudo systemctl status openhop-repeater
-sudo ss -ltnp | grep ':8000'
-sudo journalctl -u openhop-repeater -f
+OPENHOP_REPEATER_REPO=https://github.com/openhop-dev/openhop_repeater.git
+OPENHOP_REPEATER_REF=main
+OPENHOP_REPEATER_SOURCE_DIR=/opt/openhop_repeater/source
+OPENHOP_CONSOLE_DIR=/opt/openhop_console
+OPENHOP_CONSOLE_REPO=matthew73210/pymc_console-dist
+OPENHOP_UI_TARBALL=openhop-console-ui-latest.tar.gz
 ```
 
-OpenHop Repeater should listen on `0.0.0.0:8000` by default. If the UI is not reachable from the LAN, check Proxmox firewall rules, container networking, and any Debian firewall.
+Legacy `PYMC_*` environment variables are still accepted for compatibility.
 
-Serial devices must be passed through from the Proxmox host. Inside the LXC:
+## Debian LXC Hardware Notes
+
+Serial devices must be passed through from the Proxmox host before OpenHop Repeater can use real radio hardware.
+
+Inside the LXC:
 
 ```bash
 ls -l /dev/ttyACM* /dev/ttyUSB* /dev/serial/by-id/* 2>/dev/null
 id repeater
-sudo usermod -aG dialout,plugdev repeater
-sudo systemctl restart openhop-repeater
+usermod -aG dialout,plugdev repeater
+systemctl restart openhop-repeater
 ```
 
 Add `gpio`, `i2c`, or `spi` groups only when your passed-through radio hardware requires them.
 
-## Uninstall
+## Uninstall Console Assets
 
 ```bash
-sudo rm -rf /opt/openhop_console
-sudo yq -i 'del(.web.web_path)' /etc/openhop_repeater/config.yaml
-sudo systemctl restart openhop-repeater
+rm -rf /opt/openhop_console
+yq -i 'del(.web.web_path)' /etc/openhop_repeater/config.yaml
+systemctl restart openhop-repeater
 ```
 
-OpenHop Repeater itself is not removed.
+This removes the Console dashboard only. OpenHop Repeater itself is not removed.
+
+## Advanced: Upstream Repeater Only
+
+This is not the normal install path for this wrapper. Use it only when debugging upstream OpenHop Repeater independently of OpenHop Console.
+
+The upstream repository currently includes its own `manage.sh`, but this wrapper does not require you to run it separately:
+
+```bash
+git clone https://github.com/openhop-dev/openhop_repeater.git
+cd openhop_repeater
+./manage.sh install
+```
+
+After debugging the upstream-only install, return to this wrapper and run:
+
+```bash
+cd openhop_console
+./manage.sh install
+```
 
 ## Legacy Notes
 
-Older installs used `/opt/pymc_console`, `/etc/pymc_repeater/config.yaml`, and `pymc-repeater.service`. `manage.sh` detects those for compatibility, but new installs should use the OpenHop paths and `openhop-repeater.service`.
+Older installs used `/opt/pymc_console`, `/etc/pymc_repeater/config.yaml`, and `pymc-repeater.service`. `manage.sh` detects and migrates those paths when possible, but new installs use OpenHop paths and `openhop-repeater.service`.
