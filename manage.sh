@@ -1,105 +1,65 @@
 #!/bin/bash
-# ═══════════════════════════════════════════════════════════════════════════════
-# pyMC Console - Dashboard Manager
-# ═══════════════════════════════════════════════════════════════════════════════
+# OpenHop Console - Dashboard Manager
 #
-# SCOPE: Console-only.
+# Scope: console-only wrapper.
 #
-# This script manages the pyMC Console React dashboard overlay. It does NOT
-# install, upgrade, or uninstall pyMC_Repeater itself — that is upstream's job
-# (run pyMC_Repeater's own manage.sh for Repeater lifecycle).
-#
-# WHAT WE DO:
-#   • Download and install the Console dashboard into /opt/pymc_console
-#   • On fresh install, point the Repeater's web.web_path at our dashboard
-#   • On upgrade, refresh dashboard assets while preserving web_path
-#   • On uninstall, remove /opt/pymc_console (Repeater is left untouched)
-#
-# WHAT WE DO NOT DO (anymore):
-#   • Clone, install, upgrade, or uninstall pyMC_Repeater
-#   • Radio/GPIO configuration
-#   • systemd unit management (start/stop/restart/status/logs — use upstream's
-#     manage.sh or systemctl/journalctl directly for the pymc-repeater service)
-#   • Any TUI (whiptail/dialog). All prompts are plain terminal I/O.
-#
-# REPEATER REFERENCES:
-#   • $INSTALL_DIR is referenced only to detect that Repeater is installed
-#     (we refuse to install Console without it)
-#   • $CONFIG_DIR/config.yaml is patched (web.web_path) on fresh install
-#   • $REPEATER_USER:$REPEATER_GROUP is used for ownership of our files
-#
-# NON-INTERACTIVE MODE:
-#   Pass --yes (before the verb) or set ASSUME_YES=1 to auto-confirm prompts.
-# ═══════════════════════════════════════════════════════════════════════════════
+# This script installs, updates, and removes the prebuilt Console dashboard. It
+# does not install or manage OpenHop Repeater itself; service lifecycle, radio
+# setup, GPIO, and serial device setup belong to upstream OpenHop Repeater.
 
 set -e
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Configuration
-# ─────────────────────────────────────────────────────────────────────────────
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Repeater paths (read-only for us — used to locate config/user)
-INSTALL_DIR="/opt/pymc_repeater"
-CONFIG_DIR="/etc/pymc_repeater"
+OPENHOP_INSTALL_DIR="/opt/openhop_repeater"
+OPENHOP_CONFIG_DIR="/etc/openhop_repeater"
+OPENHOP_SERVICE_NAME="openhop-repeater"
+OPENHOP_REPEATER_PACKAGE="openhop_repeater"
+
+LEGACY_INSTALL_DIR="/opt/pymc_repeater"
+LEGACY_CONFIG_DIR="/etc/pymc_repeater"
+LEGACY_SERVICE_NAME="pymc-repeater"
+LEGACY_REPEATER_PACKAGE="pymc-repeater"
+
 REPEATER_USER="repeater"
 REPEATER_GROUP="repeater"
 
-# Console paths (we own these)
-CONSOLE_DIR="/opt/pymc_console"
+CONSOLE_DIR="${OPENHOP_CONSOLE_DIR:-${PYMC_CONSOLE_DIR:-/opt/openhop_console}}"
+LEGACY_CONSOLE_DIR="/opt/pymc_console"
 UI_DIR="$CONSOLE_DIR/web/html"
+LEGACY_UI_DIR="$LEGACY_CONSOLE_DIR/web/html"
 
-# Release artifacts
-UI_REPO="dmduran12/pymc_console-dist"
+UI_REPO="${OPENHOP_CONSOLE_REPO:-${PYMC_CONSOLE_REPO:-matthew73210/pymc_console-dist}}"
 UI_RELEASE_URL="https://github.com/${UI_REPO}/releases"
-UI_TARBALL="pymc-ui-latest.tar.gz"
+UI_TARBALL="${OPENHOP_UI_TARBALL:-openhop-console-ui-latest.tar.gz}"
+LEGACY_UI_TARBALL="${PYMC_UI_TARBALL:-pymc-ui-latest.tar.gz}"
 
-# Runtime flags (set by CLI parser). Exported so a re-exec preserves them.
 export ASSUME_YES="${ASSUME_YES:-0}"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Terminal Output
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Enable colors only when stdout is a TTY and NO_COLOR is unset.
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
-    RED='\033[0;31m'
-    GREEN='\033[0;32m'
-    YELLOW='\033[1;33m'
-    CYAN='\033[0;36m'
-    BOLD='\033[1m'
-    DIM='\033[2m'
-    NC='\033[0m'
+    RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+    CYAN='\033[0;36m'; BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
 else
     RED=''; GREEN=''; YELLOW=''; CYAN=''; BOLD=''; DIM=''; NC=''
 fi
 
 print_step()    { echo -e "\n${BOLD}${CYAN}[$1/$2]${NC} ${BOLD}$3${NC}"; }
-print_success() { echo -e "    ${GREEN}✓${NC} $1"; }
-print_error()   { echo -e "    ${RED}✗${NC} ${RED}$1${NC}" >&2; }
-print_info()    { echo -e "    ${CYAN}➜${NC} $1"; }
-print_warning() { echo -e "    ${YELLOW}⚠${NC} $1"; }
+print_success() { echo -e "    ${GREEN}OK${NC} $1"; }
+print_error()   { echo -e "    ${RED}ERROR${NC} ${RED}$1${NC}" >&2; }
+print_info()    { echo -e "    ${CYAN}->${NC} $1"; }
+print_warning() { echo -e "    ${YELLOW}WARN${NC} $1"; }
 
 print_banner() {
     echo ""
-    echo -e "${BOLD}${CYAN}pyMC Console${NC}"
-    echo -e "${DIM}React Dashboard for pyMC_Repeater${NC}"
+    echo -e "${BOLD}${CYAN}OpenHop Console${NC}"
+    echo -e "${DIM}React dashboard for OpenHop Repeater${NC}"
     echo ""
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Terminal Prompts (no TUI)
-# ─────────────────────────────────────────────────────────────────────────────
-#
-# prompt_yes_no "question" [default]
-#   default: "y" or "n" (default "n"). Honors ASSUME_YES=1.
-#   Returns 0 on yes, 1 on no.
 prompt_yes_no() {
     local question="$1"
     local default="${2:-n}"
-    local prompt_suffix
-    local reply
+    local prompt_suffix reply
 
     if [[ "$ASSUME_YES" == "1" ]]; then
         return 0
@@ -119,28 +79,10 @@ prompt_yes_no() {
     esac
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Status Helpers
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Tiered Repeater-presence probe. Returns 0 when ANY of the following is true,
-# in order of signal strength:
-#   1. `pip3 show pymc-repeater` succeeds (the source of truth)
-#   2. systemd knows about pymc-repeater.service (unit file present)
-#   3. $INSTALL_DIR/pyproject.toml exists (edge-case layout fallback)
-repeater_installed() {
-    if command -v pip3 &>/dev/null && pip3 show pymc-repeater &>/dev/null; then
-        return 0
-    fi
-    if command -v systemctl &>/dev/null \
-        && systemctl list-unit-files "pymc-repeater.service" &>/dev/null \
-        && [[ -n "$(systemctl list-unit-files --no-legend --no-pager "pymc-repeater.service" 2>/dev/null)" ]]; then
-        return 0
-    fi
-    [[ -d "$INSTALL_DIR" && -f "$INSTALL_DIR/pyproject.toml" ]]
+pip_has_package() {
+    local pkg="$1"
+    command -v pip3 &>/dev/null && pip3 show "$pkg" &>/dev/null
 }
-
-console_installed() { [[ -d "$UI_DIR" ]]; }
 
 pip_version() {
     local pkg="$1"
@@ -148,29 +90,90 @@ pip_version() {
     pip3 show "$pkg" 2>/dev/null | awk '/^Version:/ {print $2; exit}'
 }
 
+systemd_unit_exists() {
+    local service="$1"
+    command -v systemctl &>/dev/null || return 1
+    [[ -n "$(systemctl list-unit-files --no-legend --no-pager "${service}.service" 2>/dev/null)" ]]
+}
+
+openhop_repeater_installed() {
+    pip_has_package "$OPENHOP_REPEATER_PACKAGE" \
+        || pip_has_package "openhop-repeater" \
+        || systemd_unit_exists "$OPENHOP_SERVICE_NAME" \
+        || [[ -d "$OPENHOP_INSTALL_DIR" && -f "$OPENHOP_INSTALL_DIR/pyproject.toml" ]]
+}
+
+legacy_repeater_installed() {
+    pip_has_package "$LEGACY_REPEATER_PACKAGE" \
+        || pip_has_package "pymc_repeater" \
+        || systemd_unit_exists "$LEGACY_SERVICE_NAME" \
+        || [[ -d "$LEGACY_INSTALL_DIR" && -f "$LEGACY_INSTALL_DIR/pyproject.toml" ]]
+}
+
+repeater_installed() {
+    openhop_repeater_installed || legacy_repeater_installed
+}
+
+active_config_dir() {
+    if [[ -d "$OPENHOP_CONFIG_DIR" ]] || openhop_repeater_installed; then
+        echo "$OPENHOP_CONFIG_DIR"
+    else
+        echo "$LEGACY_CONFIG_DIR"
+    fi
+}
+
+active_config_file() {
+    echo "$(active_config_dir)/config.yaml"
+}
+
+active_service_name() {
+    if systemd_unit_exists "$OPENHOP_SERVICE_NAME" || openhop_repeater_installed; then
+        echo "$OPENHOP_SERVICE_NAME"
+    else
+        echo "$LEGACY_SERVICE_NAME"
+    fi
+}
+
 get_repeater_version() {
     local v
-    v="$(pip_version pymc-repeater)"
+    v="$(pip_version "$OPENHOP_REPEATER_PACKAGE")"
+    [[ -n "$v" ]] || v="$(pip_version "openhop-repeater")"
+    [[ -n "$v" ]] || v="$(pip_version "$LEGACY_REPEATER_PACKAGE")"
+    [[ -n "$v" ]] || v="$(pip_version "pymc_repeater")"
     echo "${v:-unknown}"
 }
 
+console_installed() {
+    [[ -d "$UI_DIR" ]]
+}
+
+legacy_console_installed() {
+    [[ -d "$LEGACY_UI_DIR" ]]
+}
+
 get_console_version() {
-    if [[ -f "$UI_DIR/VERSION" ]]; then
+    local version_file="$UI_DIR/VERSION"
+    [[ -f "$version_file" ]] || version_file="$LEGACY_UI_DIR/VERSION"
+    if [[ -f "$version_file" ]]; then
         local v
-        v=$(tr -d '[:space:]' < "$UI_DIR/VERSION")
+        v=$(tr -d '[:space:]' < "$version_file")
         echo "${v:-unknown}"
     else
         echo "unknown"
     fi
 }
 
-# Read-only systemd probes (safe to call as non-root).
-service_unit_exists() {
-    command -v systemctl &>/dev/null || return 1
-    [[ -n "$(systemctl list-unit-files --no-legend --no-pager "pymc-repeater.service" 2>/dev/null)" ]]
+service_is_active() {
+    local service
+    service="$(active_service_name)"
+    command -v systemctl &>/dev/null && systemctl is-active "$service" &>/dev/null
 }
-service_is_active()  { command -v systemctl &>/dev/null && systemctl is-active  pymc-repeater &>/dev/null; }
-service_is_enabled() { command -v systemctl &>/dev/null && systemctl is-enabled pymc-repeater &>/dev/null; }
+
+service_is_enabled() {
+    local service
+    service="$(active_service_name)"
+    command -v systemctl &>/dev/null && systemctl is-enabled "$service" &>/dev/null
+}
 
 require_root() {
     if [[ "$EUID" -ne 0 ]]; then
@@ -179,111 +182,181 @@ require_root() {
     fi
 }
 
-# ---------------------------------------------------------------------------
-# Preflight + shared error messaging
-# ---------------------------------------------------------------------------
+print_compat_warnings() {
+    if [[ -n "${PYMC_CONSOLE_DIR:-}" && -z "${OPENHOP_CONSOLE_DIR:-}" ]]; then
+        print_warning "PYMC_CONSOLE_DIR is deprecated; use OPENHOP_CONSOLE_DIR."
+    fi
+    if [[ -n "${PYMC_CONSOLE_REPO:-}" && -z "${OPENHOP_CONSOLE_REPO:-}" ]]; then
+        print_warning "PYMC_CONSOLE_REPO is deprecated; use OPENHOP_CONSOLE_REPO."
+    fi
+    if [[ -n "${PYMC_UI_TARBALL:-}" && -z "${OPENHOP_UI_TARBALL:-}" ]]; then
+        print_warning "PYMC_UI_TARBALL is deprecated; use OPENHOP_UI_TARBALL."
+    fi
+    if legacy_repeater_installed && ! openhop_repeater_installed; then
+        print_warning "Legacy pyMC Repeater detected. Install/upgrade to OpenHop Repeater when possible."
+    fi
+}
 
-# Print a non-mutating "Detected:" block summarising what we see. Returns 1
-# iff Repeater is not installed (callers use this to decide whether to bail).
 preflight_check() {
-    local repeater_ok=false
-    local config_ok=false
-    local yq_ok=false
-    local unit_state="not found"
-    repeater_installed && repeater_ok=true
-    [[ -f "$CONFIG_DIR/config.yaml" ]] && config_ok=true
-    command -v yq &>/dev/null && yq_ok=true
-    if service_unit_exists; then
-        local enabled="disabled"
-        service_is_enabled && enabled="enabled"
-        local active="inactive"
-        service_is_active && active="active"
-        unit_state="${enabled}, ${active}"
-    fi
+    local config_file service unit_state="not found"
+    local repeater_ok=false config_ok=false yq_ok=false
 
-    local repeater_line
-    if [[ "$repeater_ok" == true ]]; then
-        repeater_line="${GREEN}found${NC} (v$(get_repeater_version))"
-    else
-        repeater_line="${RED}not found${NC}"
-    fi
-    local config_line
-    if [[ "$config_ok" == true ]]; then
-        config_line="${GREEN}present${NC} ($CONFIG_DIR/config.yaml)"
-    else
-        config_line="${YELLOW}missing${NC} ($CONFIG_DIR/config.yaml)"
-    fi
-    local yq_line
-    if [[ "$yq_ok" == true ]]; then
-        yq_line="${GREEN}present${NC}"
-    else
-        yq_line="${YELLOW}missing${NC} (web_path patch will be skipped)"
-    fi
-    local unit_line
-    if service_unit_exists; then
-        unit_line="${GREEN}${unit_state}${NC}"
-    else
-        unit_line="${YELLOW}not found${NC}"
+    config_file="$(active_config_file)"
+    service="$(active_service_name)"
+
+    repeater_installed && repeater_ok=true
+    [[ -f "$config_file" ]] && config_ok=true
+    command -v yq &>/dev/null && yq_ok=true
+
+    if systemd_unit_exists "$service"; then
+        local enabled="disabled"
+        local active="inactive"
+        service_is_enabled && enabled="enabled"
+        service_is_active && active="active"
+        unit_state="${service}.service ${enabled}, ${active}"
     fi
 
     echo -e "  ${DIM}Preflight:${NC}"
-    echo -e "    pyMC_Repeater: ${repeater_line}"
-    echo -e "    Config file:   ${config_line}"
-    echo -e "    yq:            ${yq_line}"
-    echo -e "    Service unit:  ${unit_line}"
+    if [[ "$repeater_ok" == true ]]; then
+        echo -e "    OpenHop Repeater: ${GREEN}found${NC} (v$(get_repeater_version))"
+    else
+        echo -e "    OpenHop Repeater: ${RED}not found${NC}"
+    fi
+    if [[ "$config_ok" == true ]]; then
+        echo -e "    Config file:      ${GREEN}present${NC} ($config_file)"
+    else
+        echo -e "    Config file:      ${YELLOW}missing${NC} ($config_file)"
+    fi
+    if [[ "$yq_ok" == true ]]; then
+        echo -e "    yq:               ${GREEN}present${NC}"
+    else
+        echo -e "    yq:               ${YELLOW}missing${NC} (web_path patch will be skipped)"
+    fi
+    echo -e "    Service unit:     ${unit_state}"
     echo ""
 
-    if [[ "$repeater_ok" != true ]]; then
-        return 1
-    fi
-    return 0
+    [[ "$repeater_ok" == true ]]
 }
 
 print_repeater_missing_help() {
-    print_error "pyMC_Repeater is not installed."
+    print_error "OpenHop Repeater is not installed."
     echo ""
-    echo "    The Console dashboard requires pyMC_Repeater to be installed first."
-    echo "    Install it using upstream's manage.sh:"
+    echo "    The Console dashboard is served by OpenHop Repeater and needs it first."
+    echo "    Install upstream OpenHop Repeater:"
     echo ""
-    echo -e "      ${CYAN}git clone https://github.com/pyMC-dev/pyMC_Repeater.git${NC}"
-    echo -e "      ${CYAN}cd pyMC_Repeater && sudo ./manage.sh install${NC}"
+    echo -e "      ${CYAN}git clone https://github.com/openhop-dev/openhop_repeater.git${NC}"
+    echo -e "      ${CYAN}cd openhop_repeater && sudo ./manage.sh install${NC}"
     echo ""
 }
 
 print_service_hint() {
-    # Non-mutating post-op nudge. No action taken, just observability.
-    if ! service_unit_exists; then
-        print_warning "pymc-repeater.service is not registered with systemd."
-        echo "    Install/repair pyMC_Repeater to register the service."
+    local service
+    service="$(active_service_name)"
+    if ! systemd_unit_exists "$service"; then
+        print_warning "${service}.service is not registered with systemd."
+        echo "    Install or repair OpenHop Repeater to register the service."
         return
     fi
     if service_is_active; then
-        print_success "pymc-repeater.service is active."
+        print_success "${service}.service is active."
     else
-        print_warning "pymc-repeater.service is not running."
-        echo -e "    Start it: ${CYAN}sudo systemctl start pymc-repeater${NC}"
+        print_warning "${service}.service is not running."
+        echo -e "    Start it: ${CYAN}sudo systemctl start ${service}${NC}"
     fi
     if ! service_is_enabled; then
-        echo -e "    Enable on boot: ${CYAN}sudo systemctl enable pymc-repeater${NC}"
+        echo -e "    Enable on boot: ${CYAN}sudo systemctl enable ${service}${NC}"
     fi
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Dashboard Installation (core)
-# ─────────────────────────────────────────────────────────────────────────────
+migrate_legacy_console_dir() {
+    if [[ "$CONSOLE_DIR" == "$LEGACY_CONSOLE_DIR" ]]; then
+        return 0
+    fi
+    if [[ -d "$LEGACY_CONSOLE_DIR" && ! -e "$CONSOLE_DIR" ]]; then
+        print_info "Migrating legacy Console directory to $CONSOLE_DIR"
+        mkdir -p "$(dirname "$CONSOLE_DIR")"
+        mv "$LEGACY_CONSOLE_DIR" "$CONSOLE_DIR"
+        chown -R "$REPEATER_USER:$REPEATER_GROUP" "$CONSOLE_DIR" 2>/dev/null || true
+        print_success "Migrated $LEGACY_CONSOLE_DIR to $CONSOLE_DIR"
+    elif [[ -d "$LEGACY_CONSOLE_DIR" && -d "$CONSOLE_DIR" ]]; then
+        print_warning "Legacy Console directory still exists at $LEGACY_CONSOLE_DIR; leaving it untouched."
+    fi
+}
 
-install_dashboard() {
-    local config_file="$CONFIG_DIR/config.yaml"
-    local temp_file="/tmp/pymc-ui-$$.tar.gz"
-    local is_fresh_install=true
+patch_web_path() {
+    local config_file="$1"
+    local is_fresh_install="$2"
 
-    if console_installed; then
-        is_fresh_install=false
+    if [[ ! -f "$config_file" ]] || ! command -v yq &>/dev/null; then
+        print_warning "Could not configure web_path automatically."
+        if [[ ! -f "$config_file" ]]; then
+            echo -e "    Reason: ${YELLOW}$config_file not found${NC}."
+        else
+            echo -e "    Reason: ${YELLOW}yq is not installed${NC}."
+        fi
+        echo -e "    Set it manually with:"
+        echo -e "      ${CYAN}sudo yq -i '.web.web_path = \"$UI_DIR\"' $config_file${NC}"
+        echo -e "    Then restart OpenHop Repeater:"
+        echo -e "      ${CYAN}sudo systemctl restart $(active_service_name)${NC}"
+        return 0
     fi
 
+    yq -i '.web //= {}' "$config_file" 2>/dev/null || true
+
+    if [[ "$is_fresh_install" == true ]]; then
+        yq -i ".web.web_path = \"$UI_DIR\"" "$config_file"
+        print_success "Dashboard installed (web_path configured)"
+        return 0
+    fi
+
+    local configured_path
+    configured_path="$(yq '.web.web_path // ""' "$config_file" 2>/dev/null | tr -d '"')"
+    if [[ -z "$configured_path" || "$configured_path" == "null" ]]; then
+        yq -i ".web.web_path = \"$UI_DIR\"" "$config_file"
+        print_success "Dashboard updated (web_path configured)"
+    elif [[ "$configured_path" == "$LEGACY_UI_DIR" ]]; then
+        yq -i ".web.web_path = \"$UI_DIR\"" "$config_file"
+        print_success "Dashboard updated (legacy web_path migrated)"
+    else
+        print_success "Dashboard updated (web_path preserved)"
+    fi
+}
+
+download_release_tarball() {
+    local temp_file="$1"
+    local primary_url="${UI_RELEASE_URL}/latest/download/${UI_TARBALL}"
+    local legacy_url="${UI_RELEASE_URL}/latest/download/${LEGACY_UI_TARBALL}"
+
+    if curl -fsSL -o "$temp_file" "$primary_url"; then
+        return 0
+    fi
+
+    if [[ "$UI_TARBALL" != "$LEGACY_UI_TARBALL" ]]; then
+        print_warning "OpenHop-named release asset not found; trying legacy asset name."
+        if curl -fsSL -o "$temp_file" "$legacy_url"; then
+            return 0
+        fi
+    fi
+
+    print_error "Download failed from $primary_url"
+    if [[ "$UI_TARBALL" != "$LEGACY_UI_TARBALL" ]]; then
+        print_error "Fallback also failed from $legacy_url"
+    fi
+    return 1
+}
+
+install_dashboard() {
+    local config_file temp_file is_fresh_install=true
+    config_file="$(active_config_file)"
+    temp_file="/tmp/openhop-console-ui-$$.tar.gz"
+
+    console_installed && is_fresh_install=false
+    legacy_console_installed && is_fresh_install=false
+
+    migrate_legacy_console_dir
+
     print_info "Downloading dashboard..."
-    if ! curl -fsSL -o "$temp_file" "${UI_RELEASE_URL}/latest/download/${UI_TARBALL}"; then
-        print_error "Download failed from ${UI_RELEASE_URL}/latest/download/${UI_TARBALL}"
+    if ! download_release_tarball "$temp_file"; then
         rm -f "$temp_file"
         return 1
     fi
@@ -294,41 +367,18 @@ install_dashboard() {
     rm -f "$temp_file"
 
     chown -R "$REPEATER_USER:$REPEATER_GROUP" "$CONSOLE_DIR" 2>/dev/null || true
-
-    if [[ -f "$config_file" ]] && command -v yq &>/dev/null; then
-        yq -i '.web //= {}' "$config_file" 2>/dev/null || true
-        if [[ "$is_fresh_install" == true ]]; then
-            yq -i ".web.web_path = \"$UI_DIR\"" "$config_file"
-            print_success "Dashboard installed (web_path configured)"
-        else
-            print_success "Dashboard updated (web_path preserved)"
-        fi
-    else
-        print_warning "Could not configure web_path automatically."
-        if [[ ! -f "$config_file" ]]; then
-            echo -e "    Reason: ${YELLOW}$config_file not found${NC}."
-        elif ! command -v yq &>/dev/null; then
-            echo -e "    Reason: ${YELLOW}yq is not installed${NC}."
-        fi
-        echo -e "    Set it manually with:"
-        echo -e "      ${CYAN}sudo yq -i '.web.web_path = \"$UI_DIR\"' $config_file${NC}"
-        echo -e "    Then restart the service:"
-        echo -e "      ${CYAN}sudo systemctl restart pymc-repeater${NC}"
-    fi
+    patch_web_path "$config_file" "$is_fresh_install"
 
     local size
     size=$(du -sh "$UI_DIR" 2>/dev/null | cut -f1)
     print_info "Size: $size"
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Install
-# ─────────────────────────────────────────────────────────────────────────────
-
 do_install() {
     require_root "install" || return 1
 
     print_banner
+    print_compat_warnings
     echo -e "  ${DIM}Mode: Install Console${NC}"
     echo ""
     if ! preflight_check; then
@@ -336,8 +386,8 @@ do_install() {
         return 1
     fi
 
-    if console_installed; then
-        if ! prompt_yes_no "Console dashboard already installed at $UI_DIR — reinstall?" "n"; then
+    if console_installed || legacy_console_installed; then
+        if ! prompt_yes_no "Console dashboard already installed; reinstall?" "n"; then
             print_info "Install cancelled."
             return 0
         fi
@@ -349,9 +399,10 @@ do_install() {
     local ip
     ip=$(hostname -I 2>/dev/null | awk '{print $1}')
     echo ""
-    echo -e "${GREEN}${BOLD}Console Installed!${NC}"
+    echo -e "${GREEN}${BOLD}Console Installed${NC}"
     echo ""
-    echo -e "    pyMC Console:  ${CYAN}v$(get_console_version)${NC}"
+    echo -e "    OpenHop Console: ${CYAN}v$(get_console_version)${NC}"
+    echo -e "    Install path:     ${CYAN}$UI_DIR${NC}"
     echo ""
     echo -e "  Dashboard: ${CYAN}http://${ip:-localhost}:8000/${NC}"
     echo ""
@@ -359,14 +410,11 @@ do_install() {
     echo ""
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Upgrade
-# ─────────────────────────────────────────────────────────────────────────────
-
 do_upgrade() {
     require_root "upgrade" || return 1
 
     print_banner
+    print_compat_warnings
     echo -e "  ${DIM}Mode: Upgrade Console${NC}"
     echo ""
     if ! preflight_check; then
@@ -374,16 +422,13 @@ do_upgrade() {
         return 1
     fi
 
-    if ! console_installed; then
+    if ! console_installed && ! legacy_console_installed; then
         print_error "Console is not installed. Run: sudo $0 install"
         return 1
     fi
 
-    # Self-update pymc_console repo and re-exec.
-    # NOTE: this must run in the parent process (no subshell) so that `exec`
-    # replaces the running manage.sh instead of just a subshell.
     if [[ -d "$SCRIPT_DIR/.git" ]]; then
-        print_info "Checking for pymc_console updates..."
+        print_info "Checking for Console wrapper updates..."
         git config --global --add safe.directory "$SCRIPT_DIR" 2>/dev/null || true
 
         local local_hash remote_hash
@@ -392,10 +437,11 @@ do_upgrade() {
         remote_hash=$(git -C "$SCRIPT_DIR" rev-parse origin/main 2>/dev/null || echo "")
 
         if [[ -n "$remote_hash" && "$local_hash" != "$remote_hash" ]]; then
-            if git -C "$SCRIPT_DIR" pull --ff-only 2>/dev/null \
-                || git -C "$SCRIPT_DIR" reset --hard origin/main 2>/dev/null; then
-                print_success "pymc_console updated — restarting..."
+            if git -C "$SCRIPT_DIR" pull --ff-only 2>/dev/null; then
+                print_success "Console wrapper updated; restarting..."
                 exec "$SCRIPT_DIR/manage.sh" upgrade
+            else
+                print_warning "Wrapper update skipped because the checkout cannot fast-forward cleanly."
             fi
         fi
     fi
@@ -411,12 +457,12 @@ do_upgrade() {
     local ip
     ip=$(hostname -I 2>/dev/null | awk '{print $1}')
     echo ""
-    echo -e "${GREEN}${BOLD}Upgrade Complete!${NC}"
+    echo -e "${GREEN}${BOLD}Upgrade Complete${NC}"
     echo ""
     if [[ "$ui_before" != "$ui_after" ]]; then
-        echo -e "    pyMC Console:  ${DIM}v$ui_before${NC} → ${CYAN}v$ui_after${NC}"
+        echo -e "    OpenHop Console: ${DIM}v$ui_before${NC} -> ${CYAN}v$ui_after${NC}"
     else
-        echo -e "    pyMC Console:  ${CYAN}v$ui_after${NC}"
+        echo -e "    OpenHop Console: ${CYAN}v$ui_after${NC}"
     fi
     echo ""
     echo -e "  Dashboard: ${CYAN}http://${ip:-localhost}:8000/${NC}"
@@ -425,40 +471,34 @@ do_upgrade() {
     echo ""
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Uninstall
-# ─────────────────────────────────────────────────────────────────────────────
-
 do_uninstall() {
     require_root "uninstall" || return 1
 
-    local has_console=false
-    local has_repeater=false
+    local has_console=false has_legacy_console=false has_repeater=false
     console_installed && has_console=true
+    legacy_console_installed && has_legacy_console=true
     repeater_installed && has_repeater=true
 
     print_banner
     echo -e "  ${DIM}Detected:${NC}"
-    local repeater_state
     if [[ "$has_repeater" == true ]]; then
-        repeater_state="${DIM}present (v$(get_repeater_version)) — will NOT be touched${NC}"
+        echo -e "    Repeater:       ${DIM}present (v$(get_repeater_version)); will NOT be touched${NC}"
     else
-        repeater_state="${DIM}not found${NC}"
+        echo -e "    Repeater:       ${DIM}not found${NC}"
     fi
-    echo -e "    Repeater:  ${repeater_state}"
-    echo -e "    Console:   $([[ "$has_console" == true ]] && echo "${GREEN}found${NC} ($CONSOLE_DIR)" || echo "${DIM}not found${NC}")"
-    echo -e "    This repo: ${GREEN}$SCRIPT_DIR${NC}"
+    echo -e "    Console:        $([[ "$has_console" == true ]] && echo "${GREEN}found${NC} ($CONSOLE_DIR)" || echo "${DIM}not found${NC}")"
+    echo -e "    Legacy Console: $([[ "$has_legacy_console" == true ]] && echo "${YELLOW}found${NC} ($LEGACY_CONSOLE_DIR)" || echo "${DIM}not found${NC}")"
+    echo -e "    This repo:      ${GREEN}$SCRIPT_DIR${NC}"
     echo ""
 
-    if [[ "$has_console" == false ]]; then
-        print_info "Console is not installed; nothing to remove under $CONSOLE_DIR."
+    if [[ "$has_console" == false && "$has_legacy_console" == false ]]; then
+        print_info "Console is not installed; no dashboard directory to remove."
     fi
 
-    local will_remove=""
-    [[ "$has_console" == true ]] && will_remove+="  • Console dashboard ($CONSOLE_DIR)\n"
-    will_remove+="  • pymc_console repo ($SCRIPT_DIR)"
-
-    echo -e "  Will remove:\n${will_remove}"
+    echo "  Will remove:"
+    [[ "$has_console" == true ]] && echo "    - Console dashboard ($CONSOLE_DIR)"
+    [[ "$has_legacy_console" == true ]] && echo "    - Legacy Console dashboard ($LEGACY_CONSOLE_DIR)"
+    echo "    - this Console wrapper repo ($SCRIPT_DIR)"
     echo ""
 
     if ! prompt_yes_no "Continue with uninstall?" "n"; then
@@ -466,9 +506,9 @@ do_uninstall() {
         return 0
     fi
 
-    local step=1
-    local total=1
+    local step=1 total=1
     [[ "$has_console" == true ]] && ((total++))
+    [[ "$has_legacy_console" == true ]] && ((total++))
 
     if [[ "$has_console" == true ]]; then
         print_step $step $total "Removing Console dashboard"
@@ -477,16 +517,20 @@ do_uninstall() {
         ((step++))
     fi
 
-    print_step $step $total "Scheduling pymc_console repo removal"
-    # Sanity guard: only self-delete if the path is non-empty and looks like ours
+    if [[ "$has_legacy_console" == true ]]; then
+        print_step $step $total "Removing legacy Console dashboard"
+        rm -rf "$LEGACY_CONSOLE_DIR"
+        print_success "Removed $LEGACY_CONSOLE_DIR"
+        ((step++))
+    fi
+
+    print_step $step $total "Scheduling wrapper repo removal"
     if [[ -z "$SCRIPT_DIR" || "$SCRIPT_DIR" == "/" ]]; then
         print_warning "Refusing to self-delete: SCRIPT_DIR is unsafe ($SCRIPT_DIR)"
-    elif [[ "$(basename "$SCRIPT_DIR")" != *pymc_console* ]]; then
-        print_warning "Refusing to self-delete: $SCRIPT_DIR does not look like a pymc_console checkout"
+    elif [[ "$(basename "$SCRIPT_DIR")" != *pymc_console* && "$(basename "$SCRIPT_DIR")" != *openhop_console* ]]; then
+        print_warning "Refusing to self-delete: $SCRIPT_DIR does not look like a Console checkout"
     else
         echo -e "    ${YELLOW}Will remove $SCRIPT_DIR after script exits${NC}"
-        # SC2064: intentional expand-now — we want the current SCRIPT_DIR captured.
-        # shellcheck disable=SC2064
         trap "rm -rf '$SCRIPT_DIR'" EXIT
         print_success "Scheduled for removal"
     fi
@@ -496,18 +540,14 @@ do_uninstall() {
     echo ""
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Help / CLI
-# ─────────────────────────────────────────────────────────────────────────────
-
 show_help() {
     cat << EOF
-pyMC Console — Dashboard Manager
+OpenHop Console - Dashboard Manager
 
 Usage: $0 [--yes] <command>
 
 Commands:
-  install        Install the Console dashboard (requires pyMC_Repeater)
+  install        Install the Console dashboard (requires OpenHop Repeater)
   upgrade        Refresh Console dashboard assets (preserves web_path)
   uninstall      Remove Console dashboard and this repo
   -h, --help     Show this help
@@ -515,11 +555,17 @@ Commands:
 Flags:
   --yes, -y      Auto-confirm all prompts (also: ASSUME_YES=1)
 
+Environment:
+  OPENHOP_CONSOLE_DIR    Install directory (default: /opt/openhop_console)
+  OPENHOP_CONSOLE_REPO   GitHub repo for release assets (default: $UI_REPO)
+  OPENHOP_UI_TARBALL     Preferred release asset (default: $UI_TARBALL)
+
 Notes:
-  • This script manages the Console dashboard only. pyMC_Repeater itself
-    (install, upgrade, uninstall, service control, logs, radio/GPIO) must
-    be managed using upstream's manage.sh:
-      https://github.com/pyMC-dev/pyMC_Repeater
+  - This script manages the Console dashboard only.
+  - OpenHop Repeater install, upgrade, uninstall, service control, logs,
+    radio setup, GPIO, and serial devices are handled by upstream:
+      https://github.com/openhop-dev/openhop_repeater
+  - Legacy PYMC_* environment variables are accepted for compatibility.
 EOF
 }
 
@@ -529,17 +575,16 @@ print_deprecated_subcommand() {
     print_error "\`$cmd $arg\` has been deprecated."
     echo "    The Full Stack / Console-only distinction no longer exists."
     echo "    This script now manages the Console dashboard only."
-    echo "    To install or manage pyMC_Repeater, use upstream's manage.sh."
+    echo "    To install or manage OpenHop Repeater, use upstream's manage.sh."
     echo ""
     show_help
 }
 
-# Parse global flags (--yes / -y / --no-color) anywhere in the argument list.
 _args=()
 for arg in "$@"; do
     case "$arg" in
         --yes|-y)    ASSUME_YES=1 ;;
-        --no-color)  ;; # already handled via NO_COLOR env if set; accept for symmetry
+        --no-color)  ;;
         *)           _args+=("$arg") ;;
     esac
 done
@@ -582,16 +627,19 @@ case "${1:-}" in
                 ;;
         esac
         ;;
-    uninstall) do_uninstall ;;
+    uninstall)
+        do_uninstall
+        ;;
     start|stop|restart|status|logs)
-        print_error "\`$1\` is not managed by pymc_console."
-        echo "    Service control, status, and logs belong to pyMC_Repeater."
+        service="$(active_service_name)"
+        print_error "\`$1\` is not managed by OpenHop Console."
+        echo "    Service control, status, and logs belong to OpenHop Repeater."
         echo "    Use upstream's manage.sh, or run systemctl/journalctl directly:"
         echo ""
         if [[ "$1" == "logs" ]]; then
-            echo -e "      ${CYAN}sudo journalctl -u pymc-repeater -f${NC}"
+            echo -e "      ${CYAN}sudo journalctl -u ${service} -f${NC}"
         else
-            echo -e "      ${CYAN}sudo systemctl $1 pymc-repeater${NC}"
+            echo -e "      ${CYAN}sudo systemctl $1 ${service}${NC}"
         fi
         echo ""
         exit 1
