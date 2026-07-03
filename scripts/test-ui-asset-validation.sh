@@ -35,9 +35,25 @@ mkdir -p "$tmp_dir/invalid"
 cat > "$tmp_dir/invalid/index.html" <<'HTML'
 <!doctype html>
 <title>pyMC Console</title>
+<script src="assets/app.js"></script>
 HTML
+mkdir -p "$tmp_dir/invalid/assets"
+cat > "$tmp_dir/invalid/assets/app.js" <<'JS'
+console.log("legacy pyMC UI");
+JS
 if bash "$validator" "$tmp_dir/invalid" "invalid fixture" >/dev/null 2>&1; then
     echo "ERROR: stale pyMC fixture unexpectedly passed validation." >&2
+    exit 1
+fi
+
+OPENHOP_UI_VALIDATION_MODE=legacy bash "$validator" "$tmp_dir/invalid" "legacy fixture" >/dev/null
+
+mkdir -p "$tmp_dir/no-index/assets"
+cat > "$tmp_dir/no-index/assets/app.js" <<'JS'
+console.log("OpenHop");
+JS
+if OPENHOP_UI_VALIDATION_MODE=legacy bash "$validator" "$tmp_dir/no-index" "missing index fixture" >/dev/null 2>&1; then
+    echo "ERROR: missing index fixture unexpectedly passed legacy validation." >&2
     exit 1
 fi
 

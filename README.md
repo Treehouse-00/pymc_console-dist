@@ -43,6 +43,12 @@ The wrapper also installs Debian packages needed for the backend and dashboard, 
    ./manage.sh install
    ```
 
+   Until the native OpenHop dashboard asset is published, explicitly allow the temporary legacy UI fallback:
+
+   ```bash
+   OPENHOP_ALLOW_LEGACY_UI=1 ./manage.sh install
+   ```
+
 If you are not root, `manage.sh` re-runs itself with `sudo` when available. If neither root nor `sudo` is available, run the command as root.
 
 4. Open the dashboard:
@@ -89,6 +95,7 @@ OPENHOP_REPEATER_SOURCE_DIR=/opt/openhop_repeater/source
 OPENHOP_CONSOLE_DIR=/opt/openhop_console
 OPENHOP_CONSOLE_REPO=matthew73210/pymc_console-dist
 OPENHOP_UI_TARBALL=openhop-console-ui-latest.tar.gz
+OPENHOP_ALLOW_LEGACY_UI=1
 ```
 
 Legacy `PYMC_*` environment variables are still accepted with a deprecation warning.
@@ -101,9 +108,17 @@ Legacy `PYMC_*` environment variables are still accepted with a deprecation warn
 openhop-console-ui-latest.tar.gz
 ```
 
-The installer validates the bundle before installing it. If the OpenHop-named asset is unavailable, it may try the legacy `pymc-ui-latest.tar.gz` name only if that archive also passes OpenHop validation. A stale pyMC-branded UI is refused instead of being installed.
+The OpenHop asset is strictly validated before installing. If the OpenHop-named asset is unavailable, the installer may try the legacy `pymc-ui-latest.tar.gz` name and then local `frontend/dist`.
 
-Maintainers publish the dashboard asset with the `Build and Release OpenHop Console UI` GitHub Actions workflow. The local `frontend/dist` directory is only a fallback when it passes the same validation.
+Temporary compatibility mode is explicit. If native OpenHop dashboard assets are not published yet, run:
+
+```bash
+OPENHOP_ALLOW_LEGACY_UI=1 ./manage.sh install
+```
+
+In that mode the backend is still OpenHop, the dashboard still installs into `/opt/openhop_console/web/html`, and `web.web_path` still points there, but the browser UI may show old pyMC names, text, or logos. The installer prints strong warnings when this mode is used.
+
+Maintainers publish the proper OpenHop dashboard asset with the `Build and Release OpenHop Console UI` GitHub Actions workflow.
 
 ## Service Commands
 

@@ -69,7 +69,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: ui-source/${{ github.event.inputs.source_path || '.' }}/package-lock.json
+          cache-dependency-path: ui-source/**/package-lock.json
 
       - name: Prepare source for OpenHop
         run: |

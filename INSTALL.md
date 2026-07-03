@@ -27,6 +27,12 @@ cd openhop_console
 ./manage.sh install
 ```
 
+Until native OpenHop dashboard assets are published, explicitly allow the temporary legacy UI fallback:
+
+```bash
+OPENHOP_ALLOW_LEGACY_UI=1 ./manage.sh install
+```
+
 If you are not root, `manage.sh` re-runs itself with `sudo` when available. If neither root nor `sudo` is available, run the command as root.
 
 ## What manage.sh install Does
@@ -72,7 +78,22 @@ OpenHop Repeater listens on `0.0.0.0:8000` by default. If the UI is not reachabl
 openhop-console-ui-latest.tar.gz
 ```
 
-The installer validates the archive before installing it into `/opt/openhop_console/web/html`. A legacy `pymc-ui-latest.tar.gz` archive is accepted only when it contains OpenHop-compatible assets. If release assets are missing, local `frontend/dist` is used only when it passes the same validation; stale pyMC-branded assets are refused.
+The OpenHop asset is strictly validated before installing it into `/opt/openhop_console/web/html`. A legacy `pymc-ui-latest.tar.gz` archive and local `frontend/dist` are fallback sources only.
+
+Temporary compatibility mode is explicit:
+
+```bash
+OPENHOP_ALLOW_LEGACY_UI=1 ./manage.sh install
+```
+
+In that mode, the backend is OpenHop but the dashboard may still display pyMC branding/text. It still installs into `/opt/openhop_console/web/html`, and the installer still patches:
+
+```yaml
+web:
+  web_path: /opt/openhop_console/web/html
+```
+
+The installer prints warnings when legacy UI mode is used. This mode exists only until native OpenHop Console UI assets are published.
 
 Maintainers publish the release asset with the `Build and Release OpenHop Console UI` GitHub Actions workflow.
 

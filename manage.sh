@@ -41,6 +41,9 @@ UI_RELEASE_URL="https://github.com/${UI_REPO}/releases"
 UI_TARBALL="${OPENHOP_UI_TARBALL:-openhop-console-ui-latest.tar.gz}"
 LEGACY_UI_TARBALL="${PYMC_UI_TARBALL:-pymc-ui-latest.tar.gz}"
 UI_VALIDATE_SCRIPT="$SCRIPT_DIR/scripts/validate-ui-assets.sh"
+OPENHOP_ALLOW_LEGACY_UI="${OPENHOP_ALLOW_LEGACY_UI:-0}"
+DASHBOARD_ASSET_MODE="openhop"
+DASHBOARD_ASSET_SOURCE=""
 
 export ASSUME_YES="${ASSUME_YES:-0}"
 
@@ -626,15 +629,26 @@ patch_web_path() {
 validate_dashboard_dir() {
     local asset_dir="$1"
     local label="${2:-OpenHop Console assets}"
+    local validation_mode="${3:-strict}"
 
     if [[ -x "$UI_VALIDATE_SCRIPT" || -f "$UI_VALIDATE_SCRIPT" ]]; then
-        bash "$UI_VALIDATE_SCRIPT" "$asset_dir" "$label"
+        OPENHOP_UI_VALIDATION_MODE="$validation_mode" bash "$UI_VALIDATE_SCRIPT" "$asset_dir" "$label"
         return
     fi
 
     if [[ ! -f "$asset_dir/index.html" ]]; then
         print_error "$label is invalid: index.html is missing at the asset root."
         return 1
+    fi
+
+    if [[ "$validation_mode" == "legacy" ]]; then
+        local frontend_asset
+        frontend_asset="$(find "$asset_dir" -type f \( -name '*.js' -o -name '*.css' -o -name '*.mjs' \) -not -path '*/.git/*' | sed -n '1p')"
+        if [[ -z "$frontend_asset" ]]; then
+            print_error "$label is invalid: no frontend JavaScript or CSS assets found."
+            return 1
+        fi
+        return 0
     fi
 
     local hits
@@ -654,6 +668,7 @@ validate_dashboard_dir() {
 validate_dashboard_archive() {
     local archive="$1"
     local label="$2"
+    local validation_mode="${3:-strict}"
     local temp_dir
     temp_dir="$(mktemp -d /tmp/openhop-console-asset-validate.XXXXXX)"
 
@@ -663,12 +678,49 @@ validate_dashboard_archive() {
         return 1
     fi
 
-    if ! validate_dashboard_dir "$temp_dir" "$label"; then
+    if ! validate_dashboard_dir "$temp_dir" "$label" "$validation_mode"; then
         rm -rf "$temp_dir"
         return 1
     fi
 
     rm -rf "$temp_dir"
+}
+
+legacy_ui_allowed() {
+    [[ "$OPENHOP_ALLOW_LEGACY_UI" == "1" ]]
+}
+
+print_legacy_ui_warning() {
+    local source="$1"
+    print_warning "Installing legacy pyMC-branded Console UI because no OpenHop UI release asset is available yet."
+    print_warning "Backend is OpenHop, but dashboard text/assets may still say pyMC."
+    print_warning "This is temporary compatibility mode until OpenHop UI assets are published."
+    print_warning "Legacy UI source: $source"
+}
+
+accept_dashboard_archive() {
+    local archive="$1"
+    local label="$2"
+    local allow_legacy="${3:-false}"
+
+    if validate_dashboard_archive "$archive" "$label" "strict"; then
+        DASHBOARD_ASSET_MODE="openhop"
+        DASHBOARD_ASSET_SOURCE="$label"
+        return 0
+    fi
+
+    print_error "$label failed strict OpenHop asset validation."
+    if [[ "$allow_legacy" == true ]] && legacy_ui_allowed; then
+        if validate_dashboard_archive "$archive" "$label" "legacy"; then
+            DASHBOARD_ASSET_MODE="legacy"
+            DASHBOARD_ASSET_SOURCE="$label"
+            print_legacy_ui_warning "$label"
+            return 0
+        fi
+        print_error "$label also failed temporary legacy UI validation."
+    fi
+
+    return 1
 }
 
 package_local_dashboard_assets() {
@@ -681,14 +733,32 @@ package_local_dashboard_assets() {
     fi
 
     print_warning "Release assets were unavailable; checking local frontend/dist fallback."
-    if ! validate_dashboard_dir "$local_dir" "local frontend/dist"; then
-        print_error "Local frontend/dist is missing, stale, or invalid."
-        echo "    Run the GitHub Actions build/release workflow to publish ${UI_TARBALL}."
+    if validate_dashboard_dir "$local_dir" "local frontend/dist" "strict"; then
+        DASHBOARD_ASSET_MODE="openhop"
+        DASHBOARD_ASSET_SOURCE="local frontend/dist"
+        tar -C "$local_dir" -czf "$temp_file" .
+        validate_dashboard_archive "$temp_file" "local frontend/dist archive" "strict"
+        return
+    fi
+
+    if ! legacy_ui_allowed; then
+        print_error "Local frontend/dist is stale or invalid for strict OpenHop install."
+        echo "    Run the GitHub Actions build/release workflow to publish ${UI_TARBALL},"
+        echo "    or explicitly allow temporary legacy UI mode:"
+        echo "      OPENHOP_ALLOW_LEGACY_UI=1 $0 install"
         return 1
     fi
 
+    if ! validate_dashboard_dir "$local_dir" "local frontend/dist" "legacy"; then
+        print_error "Local frontend/dist is missing or not a usable frontend bundle."
+        return 1
+    fi
+
+    DASHBOARD_ASSET_MODE="legacy"
+    DASHBOARD_ASSET_SOURCE="local frontend/dist"
+    print_legacy_ui_warning "local frontend/dist"
     tar -C "$local_dir" -czf "$temp_file" .
-    validate_dashboard_archive "$temp_file" "local frontend/dist archive"
+    validate_dashboard_archive "$temp_file" "local frontend/dist archive" "legacy"
 }
 
 download_release_tarball() {
@@ -697,20 +767,20 @@ download_release_tarball() {
     local legacy_url="${UI_RELEASE_URL}/latest/download/${LEGACY_UI_TARBALL}"
 
     if curl -fsSL -o "$temp_file" "$primary_url"; then
-        if validate_dashboard_archive "$temp_file" "$UI_TARBALL"; then
+        if accept_dashboard_archive "$temp_file" "$UI_TARBALL" false; then
             return 0
         fi
-        print_error "Downloaded $UI_TARBALL failed validation; refusing to install it."
+        print_error "Downloaded $UI_TARBALL failed validation; trying fallback assets."
         rm -f "$temp_file"
     fi
 
     if [[ "$UI_TARBALL" != "$LEGACY_UI_TARBALL" ]]; then
         print_warning "OpenHop-named release asset not found; trying legacy asset name."
         if curl -fsSL -o "$temp_file" "$legacy_url"; then
-            if validate_dashboard_archive "$temp_file" "$LEGACY_UI_TARBALL"; then
+            if accept_dashboard_archive "$temp_file" "$LEGACY_UI_TARBALL" true; then
                 return 0
             fi
-            print_error "Downloaded $LEGACY_UI_TARBALL failed validation; refusing to install it."
+            print_error "Downloaded $LEGACY_UI_TARBALL failed validation; trying local fallback."
             rm -f "$temp_file"
         fi
     fi
@@ -947,15 +1017,18 @@ Environment:
   OPENHOP_CONSOLE_DIR    Install directory (default: /opt/openhop_console)
   OPENHOP_CONSOLE_REPO   GitHub repo for release assets (default: $UI_REPO)
   OPENHOP_UI_TARBALL     Preferred release asset (default: $UI_TARBALL)
+  OPENHOP_ALLOW_LEGACY_UI=1
+                          Temporarily allow pyMC-branded UI fallback assets
 
 Notes:
   - install bootstraps Debian packages, OpenHop Repeater, systemd, config,
     and the Console dashboard.
   - Dashboard assets are downloaded from the latest GitHub Release asset:
       ${UI_TARBALL}
-    The archive is validated before install; stale pyMC-branded assets are
-    refused. Local frontend/dist is only used as a fallback when it also
-    passes validation.
+    The OpenHop asset is strictly validated before install.
+  - Until native OpenHop UI assets are published, run:
+      OPENHOP_ALLOW_LEGACY_UI=1 $0 install
+    This installs the OpenHop backend but may show old pyMC dashboard branding.
   - Repeater radio/protocol logic remains upstream OpenHop code:
       https://github.com/openhop-dev/openhop_repeater
   - A clean LXC starts in no-radio mode until serial/SPI hardware is configured.

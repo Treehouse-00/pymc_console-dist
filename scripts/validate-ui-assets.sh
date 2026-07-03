@@ -5,6 +5,7 @@ set -euo pipefail
 
 asset_dir="${1:-}"
 label="${2:-OpenHop Console assets}"
+validation_mode="${OPENHOP_UI_VALIDATION_MODE:-strict}"
 
 if [[ -z "$asset_dir" ]]; then
     echo "usage: $0 <asset-dir> [label]" >&2
@@ -19,6 +20,29 @@ fi
 if [[ ! -f "$asset_dir/index.html" ]]; then
     echo "ERROR: $label must contain index.html at the archive root." >&2
     exit 1
+fi
+
+case "$validation_mode" in
+    strict|legacy) ;;
+    *)
+        echo "ERROR: unknown OPENHOP_UI_VALIDATION_MODE: $validation_mode" >&2
+        exit 2
+        ;;
+esac
+
+if [[ "$validation_mode" == "legacy" ]]; then
+    frontend_asset="$(
+        find "$asset_dir" -type f \( -name '*.js' -o -name '*.css' -o -name '*.mjs' \) \
+            -not -path '*/.git/*' \
+            | sed -n '1p'
+    )"
+    if [[ -z "$frontend_asset" ]]; then
+        echo "ERROR: $label must contain at least one frontend JavaScript or CSS asset." >&2
+        exit 1
+    fi
+
+    echo "OK: $label passed temporary legacy UI validation."
+    exit 0
 fi
 
 stale_pattern='pyMC|PYMC|pymc|pymc_console|pymc-repeater|/opt/pymc|/etc/pymc'

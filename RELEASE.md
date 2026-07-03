@@ -1,12 +1,20 @@
 # OpenHop Console Release Process
 
-This repository is the distribution wrapper for OpenHop Console. A fresh install expects a release asset named:
+This repository is the distribution wrapper for OpenHop Console. The preferred dashboard release asset is:
 
 ```text
 openhop-console-ui-latest.tar.gz
 ```
 
-`manage.sh install` downloads that asset from the latest GitHub Release, validates it, installs it into `/opt/openhop_console/web/html`, patches `/etc/openhop_repeater/config.yaml`, and restarts `openhop-repeater.service`.
+`manage.sh install` downloads that asset from the latest GitHub Release, strictly validates it, installs it into `/opt/openhop_console/web/html`, patches `/etc/openhop_repeater/config.yaml`, and restarts `openhop-repeater.service`.
+
+Until native OpenHop UI assets are published, users can explicitly allow temporary legacy fallback assets:
+
+```bash
+OPENHOP_ALLOW_LEGACY_UI=1 ./manage.sh install
+```
+
+That mode still installs the OpenHop backend and still uses `/opt/openhop_console/web/html`, but the browser dashboard may show old pyMC branding/text. The installer prints warnings when this compatibility mode is used.
 
 ## Build And Publish The Dashboard
 
@@ -24,7 +32,13 @@ Use GitHub Actions:
    release_tag: latest
    ```
 
-The workflow checks out this wrapper plus the UI source repository, runs `scripts/prepare-openhop-ui-source.sh`, builds the static UI, validates the output with `scripts/validate-ui-assets.sh`, packages `openhop-console-ui-latest.tar.gz`, extracts and validates the tarball again, then uploads it to the selected GitHub Release.
+The workflow checks out this wrapper plus the UI source repository, runs `scripts/prepare-openhop-ui-source.sh`, builds the static UI with Node 22, validates the output with `scripts/validate-ui-assets.sh`, packages `openhop-console-ui-latest.tar.gz`, extracts and validates the tarball again, then uploads it to the selected GitHub Release.
+
+The workflow cache dependency path must not contain `./` or `..` path segments. Use a valid pattern such as:
+
+```yaml
+cache-dependency-path: ui-source/**/package-lock.json
+```
 
 The legacy `pymc-ui-latest.tar.gz` asset is optional and should only be uploaded when needed for old installers. It is copied from the same validated OpenHop bundle.
 
@@ -49,13 +63,19 @@ bash -n scripts/prepare-openhop-ui-source.sh
 bash scripts/test-ui-asset-validation.sh
 ```
 
-To confirm the bundled fallback is not stale:
+Strict OpenHop validation should reject stale pyMC-branded assets:
 
 ```bash
 bash scripts/validate-ui-assets.sh frontend/dist "local frontend/dist"
 ```
 
-That command must pass before local `frontend/dist` can be used as an installer fallback. Stale pyMC-branded assets must not be published or installed.
+Temporary legacy validation should accept the bundled fallback only when explicitly requested:
+
+```bash
+OPENHOP_UI_VALIDATION_MODE=legacy bash scripts/validate-ui-assets.sh frontend/dist "local frontend/dist"
+```
+
+Stale pyMC-branded assets must not be published as `openhop-console-ui-latest.tar.gz`. They can only be used as temporary install fallback with `OPENHOP_ALLOW_LEGACY_UI=1`.
 
 ## Install Verification
 
@@ -68,6 +88,12 @@ cd /opt
 git clone https://github.com/matthew73210/pymc_console-dist.git openhop_console
 cd openhop_console
 ./manage.sh --yes install
+```
+
+If the OpenHop release asset has not been published yet:
+
+```bash
+OPENHOP_ALLOW_LEGACY_UI=1 ./manage.sh --yes install
 ```
 
 Confirm the wrapper installed both OpenHop Repeater and the Console dashboard:
