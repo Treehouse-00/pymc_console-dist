@@ -40,6 +40,7 @@ UI_REPO="${OPENHOP_CONSOLE_REPO:-${PYMC_CONSOLE_REPO:-matthew73210/pymc_console-
 UI_RELEASE_URL="https://github.com/${UI_REPO}/releases"
 UI_TARBALL="${OPENHOP_UI_TARBALL:-openhop-console-ui-latest.tar.gz}"
 LEGACY_UI_TARBALL="${PYMC_UI_TARBALL:-pymc-ui-latest.tar.gz}"
+UI_VALIDATE_SCRIPT="$SCRIPT_DIR/scripts/validate-ui-assets.sh"
 
 export ASSUME_YES="${ASSUME_YES:-0}"
 
@@ -59,7 +60,7 @@ print_warning() { echo -e "    ${YELLOW}WARN${NC} $1"; }
 print_banner() {
     echo ""
     echo -e "${BOLD}${CYAN}OpenHop Console${NC}"
-    echo -e "${DIM}React dashboard for OpenHop Repeater${NC}"
+    echo -e "${DIM}Dashboard wrapper for OpenHop Repeater${NC}"
     echo ""
 }
 
@@ -622,19 +623,95 @@ patch_web_path() {
     fi
 }
 
+validate_dashboard_dir() {
+    local asset_dir="$1"
+    local label="${2:-OpenHop Console assets}"
+
+    if [[ -x "$UI_VALIDATE_SCRIPT" || -f "$UI_VALIDATE_SCRIPT" ]]; then
+        bash "$UI_VALIDATE_SCRIPT" "$asset_dir" "$label"
+        return
+    fi
+
+    if [[ ! -f "$asset_dir/index.html" ]]; then
+        print_error "$label is invalid: index.html is missing at the asset root."
+        return 1
+    fi
+
+    local hits
+    hits="$(
+        grep -RInE 'pyMC|PYMC|pymc|pymc_console|pymc-repeater|/opt/pymc|/etc/pymc' "$asset_dir" \
+            --exclude-dir=.git \
+            --binary-files=without-match 2>/dev/null \
+            | grep -Ev '(/api/check_pymc_console|check_pymc_console|pymc-color-scheme|pymc-background|pymc_jwt_token|pymc_client_id|pymc_pref_|pymc_config_cache|pymc_core|pymc_usb|pymc_tcp|pymc-do-upgrade|pymc_build_deps)' || true
+    )"
+    if [[ -n "$hits" ]]; then
+        print_error "$label contains stale pyMC references."
+        echo "$hits" >&2
+        return 1
+    fi
+}
+
+validate_dashboard_archive() {
+    local archive="$1"
+    local label="$2"
+    local temp_dir
+    temp_dir="$(mktemp -d /tmp/openhop-console-asset-validate.XXXXXX)"
+
+    if ! tar -xzf "$archive" -C "$temp_dir"; then
+        rm -rf "$temp_dir"
+        print_error "$label is not a readable gzip tarball."
+        return 1
+    fi
+
+    if ! validate_dashboard_dir "$temp_dir" "$label"; then
+        rm -rf "$temp_dir"
+        return 1
+    fi
+
+    rm -rf "$temp_dir"
+}
+
+package_local_dashboard_assets() {
+    local temp_file="$1"
+    local local_dir="$SCRIPT_DIR/frontend/dist"
+
+    if [[ ! -d "$local_dir" ]]; then
+        print_error "No local dashboard assets found at $local_dir."
+        return 1
+    fi
+
+    print_warning "Release assets were unavailable; checking local frontend/dist fallback."
+    if ! validate_dashboard_dir "$local_dir" "local frontend/dist"; then
+        print_error "Local frontend/dist is missing, stale, or invalid."
+        echo "    Run the GitHub Actions build/release workflow to publish ${UI_TARBALL}."
+        return 1
+    fi
+
+    tar -C "$local_dir" -czf "$temp_file" .
+    validate_dashboard_archive "$temp_file" "local frontend/dist archive"
+}
+
 download_release_tarball() {
     local temp_file="$1"
     local primary_url="${UI_RELEASE_URL}/latest/download/${UI_TARBALL}"
     local legacy_url="${UI_RELEASE_URL}/latest/download/${LEGACY_UI_TARBALL}"
 
     if curl -fsSL -o "$temp_file" "$primary_url"; then
-        return 0
+        if validate_dashboard_archive "$temp_file" "$UI_TARBALL"; then
+            return 0
+        fi
+        print_error "Downloaded $UI_TARBALL failed validation; refusing to install it."
+        rm -f "$temp_file"
     fi
 
     if [[ "$UI_TARBALL" != "$LEGACY_UI_TARBALL" ]]; then
         print_warning "OpenHop-named release asset not found; trying legacy asset name."
         if curl -fsSL -o "$temp_file" "$legacy_url"; then
-            return 0
+            if validate_dashboard_archive "$temp_file" "$LEGACY_UI_TARBALL"; then
+                return 0
+            fi
+            print_error "Downloaded $LEGACY_UI_TARBALL failed validation; refusing to install it."
+            rm -f "$temp_file"
         fi
     fi
 
@@ -642,7 +719,7 @@ download_release_tarball() {
     if [[ "$UI_TARBALL" != "$LEGACY_UI_TARBALL" ]]; then
         print_error "Fallback also failed from $legacy_url"
     fi
-    return 1
+    package_local_dashboard_assets "$temp_file"
 }
 
 install_dashboard() {
@@ -874,6 +951,11 @@ Environment:
 Notes:
   - install bootstraps Debian packages, OpenHop Repeater, systemd, config,
     and the Console dashboard.
+  - Dashboard assets are downloaded from the latest GitHub Release asset:
+      ${UI_TARBALL}
+    The archive is validated before install; stale pyMC-branded assets are
+    refused. Local frontend/dist is only used as a fallback when it also
+    passes validation.
   - Repeater radio/protocol logic remains upstream OpenHop code:
       https://github.com/openhop-dev/openhop_repeater
   - A clean LXC starts in no-radio mode until serial/SPI hardware is configured.

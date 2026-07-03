@@ -1,53 +1,61 @@
-# OpenHop Console Release Notes
+# OpenHop Console Release Process
 
-This repository is the distribution wrapper for the prebuilt OpenHop Console dashboard.
-
-## Artifact Names
-
-Preferred release assets:
+This repository is the distribution wrapper for OpenHop Console. A fresh install expects a release asset named:
 
 ```text
 openhop-console-ui-latest.tar.gz
-openhop-console-ui-v<version>.tar.gz
-openhop-console-ui-v<version>.zip
 ```
 
-Compatibility asset names from the pre-OpenHop wrapper may still exist on older releases:
+`manage.sh install` downloads that asset from the latest GitHub Release, validates it, installs it into `/opt/openhop_console/web/html`, patches `/etc/openhop_repeater/config.yaml`, and restarts `openhop-repeater.service`.
+
+## Build And Publish The Dashboard
+
+Use GitHub Actions:
+
+1. Open `Actions` -> `Build and Release OpenHop Console UI`.
+2. Run the workflow manually.
+3. Use the default source unless you intentionally override it:
+
+   ```text
+   source_repo: openhop-dev/openHop_RepeaterUI
+   source_ref: main
+   source_path: .
+   build_command: npm run build
+   release_tag: latest
+   ```
+
+The workflow checks out this wrapper plus the UI source repository, runs `scripts/prepare-openhop-ui-source.sh`, builds the static UI, validates the output with `scripts/validate-ui-assets.sh`, packages `openhop-console-ui-latest.tar.gz`, extracts and validates the tarball again, then uploads it to the selected GitHub Release.
+
+The legacy `pymc-ui-latest.tar.gz` asset is optional and should only be uploaded when needed for old installers. It is copied from the same validated OpenHop bundle.
+
+## Source Repository Note
+
+This distribution repository does not contain a complete frontend source tree; its local `frontend/dist` is a fallback only. The public OpenHop UI source identified for the release workflow is:
 
 ```text
-pymc-ui-latest.tar.gz
-pymc-ui-v<version>.tar.gz
-pymc-ui-v<version>.zip
+https://github.com/openhop-dev/openHop_RepeaterUI
 ```
 
-`manage.sh` tries the OpenHop asset first and then falls back to `pymc-ui-latest.tar.gz` so existing releases remain installable.
+If a different canonical UI source is restored later, set `source_repo`, `source_ref`, and `source_path` in the workflow dispatch inputs instead of editing the installer.
 
-## Version Bump
+## Local Checks
+
+Before merging wrapper changes:
 
 ```bash
-cd frontend
-npm version patch
-git push origin main
-git push origin --tags
+bash -n manage.sh
+bash -n scripts/validate-ui-assets.sh
+bash -n scripts/prepare-openhop-ui-source.sh
+bash scripts/test-ui-asset-validation.sh
 ```
 
-Use `minor` for new user-facing features and `major` for breaking changes.
-
-## Local Validation
-
-This distribution repo normally contains prebuilt `frontend/dist` assets. Before publishing a release, verify:
+To confirm the bundled fallback is not stale:
 
 ```bash
-bash -n ../manage.sh
-npm run build
+bash scripts/validate-ui-assets.sh frontend/dist "local frontend/dist"
 ```
 
-Then confirm:
-
-```bash
-test -f frontend/dist/index.html
-test "$(cat frontend/dist/VERSION)" = "$(node -p "require('./package.json').version")"
-```
+That command must pass before local `frontend/dist` can be used as an installer fallback. Stale pyMC-branded assets must not be published or installed.
 
 ## Install Verification
 
@@ -56,6 +64,7 @@ On a clean Debian LXC or Debian host:
 ```bash
 apt update
 apt install -y git ca-certificates
+cd /opt
 git clone https://github.com/matthew73210/pymc_console-dist.git openhop_console
 cd openhop_console
 ./manage.sh --yes install
@@ -78,14 +87,6 @@ Then load:
 http://<host-or-lxc-ip>:8000/
 ```
 
-## Migration Checks
+## Compatibility Boundaries
 
-For a legacy install, verify the wrapper migrates only wrapper-owned paths:
-
-```bash
-test ! -d /opt/pymc_console || ./manage.sh --yes upgrade
-grep -R '/opt/pymc_console' /etc/openhop_repeater/config.yaml /etc/pymc_repeater/config.yaml 2>/dev/null || true
-grep -R '/opt/openhop_console/web/html' /etc/openhop_repeater/config.yaml
-```
-
-Do not rename upstream `pymc_core` references unless upstream publishes a corresponding `openhop_core` Python package/import. As of the current upstream metadata inspected for this change, the `openhop_core` repository still declares the Python project as `pymc_core`.
+Do not rename upstream `pymc_core`, `pymc_usb`, or `pymc_tcp` identifiers unless upstream publishes corresponding OpenHop package/API names. Those are backend compatibility details. Browser-visible pyMC branding, stale `/opt/pymc_*` paths, and stale `/etc/pymc_*` paths must be removed from release assets.

@@ -21,6 +21,7 @@ apt install -y git ca-certificates
 Clone and run this wrapper:
 
 ```bash
+cd /opt
 git clone https://github.com/matthew73210/pymc_console-dist.git openhop_console
 cd openhop_console
 ./manage.sh install
@@ -62,6 +63,18 @@ http://<lxc-ip>:8000/
 ```
 
 OpenHop Repeater listens on `0.0.0.0:8000` by default. If the UI is not reachable from the LAN, check the LXC network, Proxmox firewall rules, and any Debian firewall.
+
+## Dashboard Asset Source
+
+`manage.sh install` installs the backend and dashboard together. The dashboard files normally come from this repo's latest GitHub Release asset:
+
+```text
+openhop-console-ui-latest.tar.gz
+```
+
+The installer validates the archive before installing it into `/opt/openhop_console/web/html`. A legacy `pymc-ui-latest.tar.gz` archive is accepted only when it contains OpenHop-compatible assets. If release assets are missing, local `frontend/dist` is used only when it passes the same validation; stale pyMC-branded assets are refused.
+
+Maintainers publish the release asset with the `Build and Release OpenHop Console UI` GitHub Actions workflow.
 
 ## Upgrade
 

@@ -37,6 +37,7 @@ The wrapper also installs Debian packages needed for the backend and dashboard, 
 3. Clone and run the wrapper:
 
    ```bash
+   cd /opt
    git clone https://github.com/matthew73210/pymc_console-dist.git openhop_console
    cd openhop_console
    ./manage.sh install
@@ -91,6 +92,18 @@ OPENHOP_UI_TARBALL=openhop-console-ui-latest.tar.gz
 ```
 
 Legacy `PYMC_*` environment variables are still accepted with a deprecation warning.
+
+## Dashboard Release Asset
+
+`manage.sh install` downloads the validated dashboard bundle from this repo's latest GitHub Release:
+
+```text
+openhop-console-ui-latest.tar.gz
+```
+
+The installer validates the bundle before installing it. If the OpenHop-named asset is unavailable, it may try the legacy `pymc-ui-latest.tar.gz` name only if that archive also passes OpenHop validation. A stale pyMC-branded UI is refused instead of being installed.
+
+Maintainers publish the dashboard asset with the `Build and Release OpenHop Console UI` GitHub Actions workflow. The local `frontend/dist` directory is only a fallback when it passes the same validation.
 
 ## Service Commands
 
