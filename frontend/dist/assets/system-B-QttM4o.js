@@ -1,1 +1,0 @@
-import{dv as c}from"./index-DJb8X5jG.js";async function t(e){return c("/api/restart_service",{method:"POST",body:"{}",signal:e})}async function o(){return c("/api/check_pymc_console")}export{o as c,t as r};
