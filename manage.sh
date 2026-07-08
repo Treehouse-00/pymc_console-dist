@@ -1,13 +1,13 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# pyMC Console - Dashboard Manager
+# openHop Console - Dashboard Manager
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # SCOPE: Console-only.
 #
-# This script manages the pyMC Console React dashboard overlay. It does NOT
-# install, upgrade, or uninstall pyMC_Repeater itself — that is upstream's job
-# (run pyMC_Repeater's own manage.sh for Repeater lifecycle).
+# This script manages the openHop Console React dashboard overlay. It does NOT
+# install, upgrade, or uninstall openHop Repeater itself — that is the Repeater
+# repo's job (run openhop_repeater's own manage.sh for Repeater lifecycle).
 #
 # WHAT WE DO:
 #   • Download and install the Console dashboard into /opt/pymc_console
@@ -16,10 +16,10 @@
 #   • On uninstall, remove /opt/pymc_console (Repeater is left untouched)
 #
 # WHAT WE DO NOT DO (anymore):
-#   • Clone, install, upgrade, or uninstall pyMC_Repeater
+#   • Clone, install, upgrade, or uninstall openHop Repeater
 #   • Radio/GPIO configuration
-#   • systemd unit management (start/stop/restart/status/logs — use upstream's
-#     manage.sh or systemctl/journalctl directly for the pymc-repeater service)
+#   • systemd unit management (start/stop/restart/status/logs — use Repeater's
+#     manage.sh or systemctl/journalctl directly for the openhop-repeater service)
 #   • Any TUI (whiptail/dialog). All prompts are plain terminal I/O.
 #
 # REPEATER REFERENCES:
@@ -41,10 +41,16 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Repeater paths (read-only for us — used to locate config/user)
-INSTALL_DIR="/opt/pymc_repeater"
-CONFIG_DIR="/etc/pymc_repeater"
+INSTALL_DIR="/opt/openhop_repeater"
+CONFIG_DIR="/etc/openhop_repeater"
+SERVICE_NAME="openhop-repeater"
 REPEATER_USER="repeater"
 REPEATER_GROUP="repeater"
+
+# Legacy pyMC_Repeater paths remain detection fallbacks for older systems.
+LEGACY_INSTALL_DIR="/opt/pymc_repeater"
+LEGACY_CONFIG_DIR="/etc/pymc_repeater"
+LEGACY_SERVICE_NAME="pymc-repeater"
 
 # Console paths (we own these)
 CONSOLE_DIR="/opt/pymc_console"
@@ -83,8 +89,8 @@ print_warning() { echo -e "    ${YELLOW}⚠${NC} $1"; }
 
 print_banner() {
     echo ""
-    echo -e "${BOLD}${CYAN}pyMC Console${NC}"
-    echo -e "${DIM}React Dashboard for pyMC_Repeater${NC}"
+    echo -e "${BOLD}${CYAN}openHop Console${NC}"
+    echo -e "${DIM}React Dashboard for openHop Repeater${NC}"
     echo ""
 }
 
@@ -125,19 +131,19 @@ prompt_yes_no() {
 
 # Tiered Repeater-presence probe. Returns 0 when ANY of the following is true,
 # in order of signal strength:
-#   1. `pip3 show pymc-repeater` succeeds (the source of truth)
-#   2. systemd knows about pymc-repeater.service (unit file present)
+#   1. `pip3 show openhop_repeater` succeeds (the source of truth)
+#   2. systemd knows about openhop-repeater.service (unit file present)
 #   3. $INSTALL_DIR/pyproject.toml exists (edge-case layout fallback)
 repeater_installed() {
-    if command -v pip3 &>/dev/null && pip3 show pymc-repeater &>/dev/null; then
+    if command -v pip3 &>/dev/null && { pip3 show openhop_repeater &>/dev/null || pip3 show pymc-repeater &>/dev/null; }; then
         return 0
     fi
     if command -v systemctl &>/dev/null \
-        && systemctl list-unit-files "pymc-repeater.service" &>/dev/null \
-        && [[ -n "$(systemctl list-unit-files --no-legend --no-pager "pymc-repeater.service" 2>/dev/null)" ]]; then
+        && { [[ -n "$(systemctl list-unit-files --no-legend --no-pager "${SERVICE_NAME}.service" 2>/dev/null)" ]] \
+             || [[ -n "$(systemctl list-unit-files --no-legend --no-pager "${LEGACY_SERVICE_NAME}.service" 2>/dev/null)" ]]; }; then
         return 0
     fi
-    [[ -d "$INSTALL_DIR" && -f "$INSTALL_DIR/pyproject.toml" ]]
+    [[ -d "$INSTALL_DIR" && -f "$INSTALL_DIR/pyproject.toml" ]] || [[ -d "$LEGACY_INSTALL_DIR" && -f "$LEGACY_INSTALL_DIR/pyproject.toml" ]]
 }
 
 console_installed() { [[ -d "$UI_DIR" ]]; }
@@ -150,7 +156,8 @@ pip_version() {
 
 get_repeater_version() {
     local v
-    v="$(pip_version pymc-repeater)"
+    v="$(pip_version openhop_repeater)"
+    [[ -n "$v" ]] || v="$(pip_version pymc-repeater)"
     echo "${v:-unknown}"
 }
 
@@ -167,10 +174,18 @@ get_console_version() {
 # Read-only systemd probes (safe to call as non-root).
 service_unit_exists() {
     command -v systemctl &>/dev/null || return 1
-    [[ -n "$(systemctl list-unit-files --no-legend --no-pager "pymc-repeater.service" 2>/dev/null)" ]]
+    [[ -n "$(systemctl list-unit-files --no-legend --no-pager "${SERVICE_NAME}.service" 2>/dev/null)" ]] \
+        || [[ -n "$(systemctl list-unit-files --no-legend --no-pager "${LEGACY_SERVICE_NAME}.service" 2>/dev/null)" ]]
 }
-service_is_active()  { command -v systemctl &>/dev/null && systemctl is-active  pymc-repeater &>/dev/null; }
-service_is_enabled() { command -v systemctl &>/dev/null && systemctl is-enabled pymc-repeater &>/dev/null; }
+active_service_name() {
+    if command -v systemctl &>/dev/null && [[ -n "$(systemctl list-unit-files --no-legend --no-pager "${SERVICE_NAME}.service" 2>/dev/null)" ]]; then
+        echo "$SERVICE_NAME"
+    else
+        echo "$LEGACY_SERVICE_NAME"
+    fi
+}
+service_is_active()  { command -v systemctl &>/dev/null && systemctl is-active  "$(active_service_name)" &>/dev/null; }
+service_is_enabled() { command -v systemctl &>/dev/null && systemctl is-enabled "$(active_service_name)" &>/dev/null; }
 
 require_root() {
     if [[ "$EUID" -ne 0 ]]; then
@@ -227,7 +242,7 @@ preflight_check() {
     fi
 
     echo -e "  ${DIM}Preflight:${NC}"
-    echo -e "    pyMC_Repeater: ${repeater_line}"
+    echo -e "    Repeater:     ${repeater_line}"
     echo -e "    Config file:   ${config_line}"
     echo -e "    yq:            ${yq_line}"
     echo -e "    Service unit:  ${unit_line}"
@@ -240,31 +255,31 @@ preflight_check() {
 }
 
 print_repeater_missing_help() {
-    print_error "pyMC_Repeater is not installed."
+    print_error "openHop Repeater is not installed."
     echo ""
-    echo "    The Console dashboard requires pyMC_Repeater to be installed first."
-    echo "    Install it using upstream's manage.sh:"
+    echo "    The Console dashboard requires openHop Repeater to be installed first."
+    echo "    Install it using the Repeater repo's manage.sh:"
     echo ""
-    echo -e "      ${CYAN}git clone https://github.com/pyMC-dev/pyMC_Repeater.git${NC}"
-    echo -e "      ${CYAN}cd pyMC_Repeater && sudo ./manage.sh install${NC}"
+    echo -e "      ${CYAN}git clone https://github.com/openhop-dev/openhop_repeater.git${NC}"
+    echo -e "      ${CYAN}cd openhop_repeater && sudo bash ./manage.sh install${NC}"
     echo ""
 }
 
 print_service_hint() {
     # Non-mutating post-op nudge. No action taken, just observability.
     if ! service_unit_exists; then
-        print_warning "pymc-repeater.service is not registered with systemd."
-        echo "    Install/repair pyMC_Repeater to register the service."
+        print_warning "${SERVICE_NAME}.service is not registered with systemd."
+        echo "    Install/repair openHop Repeater to register the service."
         return
     fi
     if service_is_active; then
-        print_success "pymc-repeater.service is active."
+        print_success "$(active_service_name).service is active."
     else
-        print_warning "pymc-repeater.service is not running."
-        echo -e "    Start it: ${CYAN}sudo systemctl start pymc-repeater${NC}"
+        print_warning "$(active_service_name).service is not running."
+        echo -e "    Start it: ${CYAN}sudo systemctl start $(active_service_name)${NC}"
     fi
     if ! service_is_enabled; then
-        echo -e "    Enable on boot: ${CYAN}sudo systemctl enable pymc-repeater${NC}"
+        echo -e "    Enable on boot: ${CYAN}sudo systemctl enable $(active_service_name)${NC}"
     fi
 }
 
@@ -313,7 +328,7 @@ install_dashboard() {
         echo -e "    Set it manually with:"
         echo -e "      ${CYAN}sudo yq -i '.web.web_path = \"$UI_DIR\"' $config_file${NC}"
         echo -e "    Then restart the service:"
-        echo -e "      ${CYAN}sudo systemctl restart pymc-repeater${NC}"
+        echo -e "      ${CYAN}sudo systemctl restart $(active_service_name)${NC}"
     fi
 
     local size
@@ -351,7 +366,7 @@ do_install() {
     echo ""
     echo -e "${GREEN}${BOLD}Console Installed!${NC}"
     echo ""
-    echo -e "    pyMC Console:  ${CYAN}v$(get_console_version)${NC}"
+    echo -e "    openHop Console:  ${CYAN}v$(get_console_version)${NC}"
     echo ""
     echo -e "  Dashboard: ${CYAN}http://${ip:-localhost}:8000/${NC}"
     echo ""
@@ -414,9 +429,9 @@ do_upgrade() {
     echo -e "${GREEN}${BOLD}Upgrade Complete!${NC}"
     echo ""
     if [[ "$ui_before" != "$ui_after" ]]; then
-        echo -e "    pyMC Console:  ${DIM}v$ui_before${NC} → ${CYAN}v$ui_after${NC}"
+        echo -e "    openHop Console:  ${DIM}v$ui_before${NC} → ${CYAN}v$ui_after${NC}"
     else
-        echo -e "    pyMC Console:  ${CYAN}v$ui_after${NC}"
+        echo -e "    openHop Console:  ${CYAN}v$ui_after${NC}"
     fi
     echo ""
     echo -e "  Dashboard: ${CYAN}http://${ip:-localhost}:8000/${NC}"
@@ -502,12 +517,12 @@ do_uninstall() {
 
 show_help() {
     cat << EOF
-pyMC Console — Dashboard Manager
+openHop Console — Dashboard Manager
 
 Usage: $0 [--yes] <command>
 
 Commands:
-  install        Install the Console dashboard (requires pyMC_Repeater)
+  install        Install the Console dashboard (requires openHop Repeater)
   upgrade        Refresh Console dashboard assets (preserves web_path)
   uninstall      Remove Console dashboard and this repo
   -h, --help     Show this help
@@ -516,10 +531,10 @@ Flags:
   --yes, -y      Auto-confirm all prompts (also: ASSUME_YES=1)
 
 Notes:
-  • This script manages the Console dashboard only. pyMC_Repeater itself
+  • This script manages the Console dashboard only. openHop Repeater itself
     (install, upgrade, uninstall, service control, logs, radio/GPIO) must
-    be managed using upstream's manage.sh:
-      https://github.com/pyMC-dev/pyMC_Repeater
+    be managed using the Repeater repo's manage.sh:
+      https://github.com/openhop-dev/openhop_repeater
 EOF
 }
 
@@ -529,7 +544,7 @@ print_deprecated_subcommand() {
     print_error "\`$cmd $arg\` has been deprecated."
     echo "    The Full Stack / Console-only distinction no longer exists."
     echo "    This script now manages the Console dashboard only."
-    echo "    To install or manage pyMC_Repeater, use upstream's manage.sh."
+    echo "    To install or manage openHop Repeater, use the Repeater repo's manage.sh."
     echo ""
     show_help
 }
@@ -585,13 +600,13 @@ case "${1:-}" in
     uninstall) do_uninstall ;;
     start|stop|restart|status|logs)
         print_error "\`$1\` is not managed by pymc_console."
-        echo "    Service control, status, and logs belong to pyMC_Repeater."
-        echo "    Use upstream's manage.sh, or run systemctl/journalctl directly:"
+        echo "    Service control, status, and logs belong to openHop Repeater."
+        echo "    Use the Repeater repo's manage.sh, or run systemctl/journalctl directly:"
         echo ""
         if [[ "$1" == "logs" ]]; then
-            echo -e "      ${CYAN}sudo journalctl -u pymc-repeater -f${NC}"
+            echo -e "      ${CYAN}sudo journalctl -u $(active_service_name) -f${NC}"
         else
-            echo -e "      ${CYAN}sudo systemctl $1 pymc-repeater${NC}"
+            echo -e "      ${CYAN}sudo systemctl $1 $(active_service_name)${NC}"
         fi
         echo ""
         exit 1

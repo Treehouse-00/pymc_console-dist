@@ -52,9 +52,15 @@ jobs:
             fi
           fi
       
+      - name: Resolve safe ref name
+        id: ref_name
+        run: |
+          SAFE_REF_NAME="$(echo "${{ github.ref_name }}" | tr '/:@' '---')"
+          echo "safe_name=$SAFE_REF_NAME" >> "$GITHUB_OUTPUT"
+
       - name: Upload build artifacts (for inspection)
         uses: actions/upload-artifact@v4
         with:
-          name: pymc-ui-${{ github.ref_name }}
+          name: pymc-ui-${{ steps.ref_name.outputs.safe_name }}
           path: frontend/dist/
           retention-days: 7

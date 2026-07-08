@@ -1,11 +1,11 @@
-# pyMC Console
+# openHop Console
 
-[![GitHub Release](https://img.shields.io/github/v/release/dmduran12/pymc_console-dist)](https://github.com/dmduran12/pymc_console-dist/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/Treehouse-00/pymc_console)](https://github.com/Treehouse-00/pymc_console/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 A real-time web dashboard for [MeshCore](https://meshcore.io/) LoRa mesh repeaters.
 
-pyMC Console gives you full visibility into your mesh network — packet flow, topology, signal quality, RF metrics, and radio configuration — through a single browser tab. It layers on top of [pyMC_Repeater](https://github.com/pyMC-dev/pyMC_Repeater) without modifying it.
+openHop Console gives you full visibility into your MeshCore network — packet flow, topology, signal quality, RF metrics, GPS diagnostics, and radio configuration — through a single browser tab. It layers on top of [openHop Repeater](https://github.com/openhop-dev/openhop_repeater) without replacing the Repeater service.
 
 ---
 
@@ -17,27 +17,27 @@ pyMC Console gives you full visibility into your mesh network — packet flow, t
 - LoRa radio module (SX1262 or SX1276)
 - Raspberry Pi OS (Bookworm recommended)
 
-### Prerequisite: pyMC_Repeater
+### Prerequisite: openHop Repeater
 
-The Console dashboard plugs into an existing [pyMC_Repeater](https://github.com/pyMC-dev/pyMC_Repeater) install. If you don't already have it running, install it first using upstream's manage.sh:
+The Console dashboard plugs into an existing [openHop Repeater](https://github.com/openhop-dev/openhop_repeater) install. If you don't already have it running, install Repeater first using the Repeater repo's `manage.sh`:
 
 ```bash
-git clone https://github.com/pyMC-dev/pyMC_Repeater.git
-cd pyMC_Repeater
-sudo ./manage.sh install
+git clone https://github.com/openhop-dev/openhop_repeater.git
+cd openhop_repeater
+sudo bash ./manage.sh install
 ```
 
-Upstream handles system dependencies, pip install, radio/GPIO configuration, and the systemd service.
+Repeater handles system dependencies, the `/opt/openhop_repeater` virtualenv, radio/GPIO configuration, `/etc/openhop_repeater/config.yaml`, and the `openhop-repeater` systemd service.
 
 ### Install the Console
 
 ```bash
-git clone https://github.com/dmduran12/pymc_console-dist.git pymc_console
+git clone https://github.com/Treehouse-00/pymc_console.git pymc_console
 cd pymc_console
 sudo bash manage.sh install
 ```
 
-This downloads the latest Console release, extracts it to `/opt/pymc_console/web/html/`, and points pyMC_Repeater's `web.web_path` at it. Open `http://<your-pi-ip>:8000` in a browser.
+This downloads the latest Console release, extracts it to `/opt/pymc_console/web/html/`, and points Repeater's `web.web_path` at it. Open `http://<your-repeater-ip>:8000` in a browser.
 
 ### Upgrade the Console
 
@@ -46,7 +46,7 @@ cd pymc_console
 sudo bash manage.sh upgrade
 ```
 
-Refreshes the dashboard assets in place. Your `web_path` setting is preserved. Repeater, core, and config are untouched. For upgrading pyMC_Repeater itself, use upstream's manage.sh.
+Refreshes the dashboard assets in place. Your `web_path` setting is preserved. Repeater, core, and config are untouched. For upgrading openHop Repeater itself, use the Repeater repo's `manage.sh`.
 
 ### Uninstall the Console
 
@@ -55,7 +55,7 @@ cd pymc_console
 sudo bash manage.sh uninstall
 ```
 
-Removes `/opt/pymc_console` and this repo. pyMC_Repeater is **not** touched — use upstream's manage.sh to remove it.
+Removes `/opt/pymc_console` and this repo. openHop Repeater is **not** touched — use the Repeater repo's `manage.sh` to remove it.
 
 ### Non-interactive Mode
 
@@ -72,7 +72,7 @@ ASSUME_YES=1 sudo -E bash manage.sh upgrade
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      pyMC Console                           │
+│                    openHop Console                          │
 │            (this repo — web dashboard UI)                   │
 │                                                             │
 │  • React SPA served on port 8000                            │
@@ -81,8 +81,8 @@ ASSUME_YES=1 sudo -E bash manage.sh upgrade
 └─────────────────────┬───────────────────────────────────────┘
                       │ uses API from
 ┌─────────────────────▼───────────────────────────────────────┐
-│                    pyMC_Repeater                             │
-│            (RightUp's repeater daemon)                      │
+│                    openHop Repeater                          │
+│              (openHop repeater daemon)                       │
 │                                                             │
 │  • Python daemon running the LoRa repeater                  │
 │  • REST API + WebSocket on port 8000                        │
@@ -90,8 +90,8 @@ ASSUME_YES=1 sudo -E bash manage.sh upgrade
 └─────────────────────┬───────────────────────────────────────┘
                       │ built on
 ┌─────────────────────▼───────────────────────────────────────┐
-│                      pyMC_core                              │
-│             (RightUp's protocol library)                    │
+│                    openHop Core                              │
+│              (MeshCore protocol library)                     │
 │                                                             │
 │  • Low-level MeshCore protocol implementation               │
 │  • Radio drivers (SX1262, SX1276)                           │
@@ -101,7 +101,7 @@ ASSUME_YES=1 sudo -E bash manage.sh upgrade
 
 **Key points:**
 - Console does **not** replace Repeater — they work together
-- Repeater is installed separately using upstream's manage.sh; our `manage.sh` layers the Console on top
+- Repeater is installed separately using openHop Repeater's `manage.sh`; Console's `manage.sh` only layers the dashboard on top
 - You can upgrade Console independently without touching Repeater
 
 ---
@@ -189,7 +189,7 @@ Two polished color schemes and a built-in CLI for direct repeater interaction.
 
 ### manage.sh Commands
 
-`manage.sh` is Console-only. Service control, status, logs, and radio/GPIO configuration are all handled by upstream pyMC_Repeater.
+`manage.sh` is Console-only. Service control, status, logs, updates, and radio/GPIO configuration are all handled by openHop Repeater.
 
 ```bash
 sudo bash manage.sh --help
@@ -197,24 +197,24 @@ sudo bash manage.sh --help
 
 | Verb | Action |
 |------|--------|
-| `install` | Install the Console dashboard into `/opt/pymc_console` and point `web_path` at it. Requires pyMC_Repeater to be installed. |
-| `upgrade` | Refresh the dashboard assets in place. Preserves your `web_path` and self-updates this repo from `origin/main`. |
-| `uninstall` | Remove `/opt/pymc_console` and this repo. Does NOT touch pyMC_Repeater. |
+| `install` | Install the Console dashboard into `/opt/pymc_console` and point `web_path` at it. Requires openHop Repeater to be installed. |
+| `upgrade` | Refresh the dashboard assets in place. Preserves your `web_path` and self-updates this repo from `origin/main`. Repeater stays untouched. |
+| `uninstall` | Remove `/opt/pymc_console` and this repo. Does NOT touch openHop Repeater. |
 
 Flags: `--yes` / `-y` (or `ASSUME_YES=1`) auto-confirms prompts; `NO_COLOR=1` disables ANSI output.
 
 ### Radio & GPIO Configuration
 
-Radio and GPIO settings are managed by upstream pyMC_Repeater:
+Radio and GPIO settings are managed by openHop Repeater:
 
 ```bash
-cd ~/pyMC_Repeater && sudo ./manage.sh
+cd ~/openhop_repeater && sudo bash ./manage.sh
 ```
 
 Or edit the config directly:
 
 ```yaml
-# /etc/pymc_repeater/config.yaml
+# /etc/openhop_repeater/config.yaml
 radio:
   frequency: 927875000      # Hz
   spreading_factor: 7       # SF7–SF12
@@ -240,15 +240,15 @@ radio:
 
 ### Service Management
 
-Service lifecycle belongs to pyMC_Repeater's systemd unit. Use `systemctl` / `journalctl` directly:
+Service lifecycle belongs to openHop Repeater's systemd unit. Use `systemctl` / `journalctl` directly:
 
 ```bash
-sudo systemctl status pymc-repeater     # Check status
-sudo systemctl restart pymc-repeater    # Restart
-sudo journalctl -u pymc-repeater -f     # Live logs
+sudo systemctl status openhop-repeater     # Check status
+sudo systemctl restart openhop-repeater    # Restart
+sudo journalctl -u openhop-repeater -f     # Live logs
 ```
 
-`manage.sh` does not wrap these commands — they are upstream's responsibility.
+`manage.sh` does not wrap these commands — they are Repeater's responsibility.
 
 ---
 
@@ -258,12 +258,12 @@ After installation:
 
 ```
 ~/pymc_console/                ← This repo (cloned by you)
-~/pyMC_Repeater/               ← Upstream repeater source (cloned by you)
+~/openhop_repeater/            ← openHop Repeater source (cloned by you)
 
-/opt/pymc_repeater/            ← Installed repeater (owned by upstream manage.sh)
+/opt/openhop_repeater/         ← Installed Repeater (owned by Repeater manage.sh)
 /opt/pymc_console/web/html/    ← Installed dashboard (owned by our manage.sh)
-/etc/pymc_repeater/config.yaml ← Radio + repeater config (we patch web.web_path only)
-/var/log/pymc_repeater/        ← Log files (upstream)
+/etc/openhop_repeater/config.yaml ← Radio + Repeater config (we patch web.web_path only)
+/var/log/openhop_repeater/     ← Repeater log files
 ```
 
 ---
@@ -285,7 +285,7 @@ After installation:
 
 ### Connection
 
-LoRa module connects via **SPI** with GPIO pins for reset, busy, and DIO1. Pin mapping is configured during installation via pyMC_Repeater's manage.sh.
+LoRa module connects via **SPI** with GPIO pins for reset, busy, and DIO1. Pin mapping is configured during installation via openHop Repeater's manage.sh.
 
 ---
 
@@ -295,7 +295,7 @@ LoRa module connects via **SPI** with GPIO pins for reset, busy, and DIO1. Pin m
 
 1. **Is the service running?**
    ```bash
-   sudo systemctl status pymc-repeater
+   sudo systemctl status openhop-repeater
    ```
 2. **Is port 8000 responding?**
    ```bash
@@ -303,7 +303,7 @@ LoRa module connects via **SPI** with GPIO pins for reset, busy, and DIO1. Pin m
    ```
 3. **Check for errors:**
    ```bash
-   sudo journalctl -u pymc-repeater -n 50
+   sudo journalctl -u openhop-repeater -n 50
    ```
 
 ### Login fails / "Error 200"
@@ -311,8 +311,8 @@ LoRa module connects via **SPI** with GPIO pins for reset, busy, and DIO1. Pin m
 Usually caused by a version mismatch between Console and Repeater. Update both:
 
 ```bash
-# Update pyMC_Repeater (upstream)
-cd ~/pyMC_Repeater && sudo ./manage.sh upgrade
+# Update openHop Repeater
+cd ~/openhop_repeater && sudo bash ./manage.sh upgrade
 
 # Update the Console dashboard
 cd ~/pymc_console && sudo bash manage.sh upgrade
@@ -326,23 +326,23 @@ cd ~/pymc_console && sudo bash manage.sh upgrade
    ```
    If no devices listed, enable SPI via `raspi-config` → Interface Options → SPI.
 
-2. **GPIO correct?** Run pyMC_Repeater's manage.sh → Configure GPIO and verify pin assignments match your wiring.
+2. **GPIO correct?** Run openHop Repeater's manage.sh → Configure GPIO and verify pin assignments match your wiring.
 
 3. **Frequency match?** Confirm your radio frequency matches the rest of your mesh network.
 
 4. **Check the logs:**
    ```bash
-   sudo journalctl -u pymc-repeater -n 100 | grep -i "error\|fail\|radio"
+   sudo journalctl -u openhop-repeater -n 100 | grep -i "error\|fail\|radio"
    ```
 
 ### Service won't start
 
 ```bash
 # Check for config syntax errors
-python3 -c "import yaml; yaml.safe_load(open('/etc/pymc_repeater/config.yaml'))"
+python3 -c "import yaml; yaml.safe_load(open('/etc/openhop_repeater/config.yaml'))"
 
 # Check for Python dependency issues
-pip3 show pymc-repeater pymc-core
+/opt/openhop_repeater/venv/bin/python -m pip show openhop_repeater openhop_core
 ```
 
 ### "Radio presets file not found" during install
@@ -351,7 +351,7 @@ Non-fatal warning. The installer fetches presets from an API; if unavailable, it
 
 ### Dashboard loads but shows no data
 
-- The dashboard requires authentication. If you see the login page, use the credentials you set during pyMC_Repeater installation.
+- The dashboard requires authentication. If you see the login page, use the credentials you set during openHop Repeater installation.
 - If you're on a fresh install, allow 30–60 seconds for the repeater to initialize and begin receiving packets.
 - Check that WebSocket is connecting: open browser DevTools → Network → WS. You should see an active `/ws/packets` connection.
 
@@ -415,7 +415,7 @@ The frontend includes a complete TypeScript port of the MeshCore protocol — bi
 
 ## Standalone UI Installation
 
-If you already have pyMC_Repeater running and just want the dashboard, see [INSTALL.md](INSTALL.md) for manual tar.gz installation without manage.sh.
+If you already have openHop Repeater running and just want the dashboard, see [INSTALL.md](INSTALL.md) for manual tar.gz installation without manage.sh.
 
 ---
 
@@ -427,9 +427,9 @@ MIT — See [LICENSE](LICENSE)
 
 Built on the work of:
 
-- **[RightUp](https://github.com/rightup)** — Creator of pyMC_Repeater, pymc_core, and the MeshCore Python ecosystem
-- **[pyMC_Repeater](https://github.com/pyMC-dev/pyMC_Repeater)** — Core repeater daemon
-- **[pymc_core](https://github.com/rightup/pyMC_core)** — Protocol library
+- **[RightUp](https://github.com/rightup)** — Creator of the original pyMC Repeater/Core projects and a maintainer of the MeshCore Python ecosystem
+- **[openHop Repeater](https://github.com/openhop-dev/openhop_repeater)** — Core repeater daemon
+- **[openHop Core](https://github.com/openhop-dev/openhop_core)** — Protocol library
 - **[MeshCore](https://meshcore.io/)** — The MeshCore project and community
 - **[d40cht/meshcore-connectivity-analysis](https://github.com/d40cht/meshcore-connectivity-analysis)** — Viterbi HMM approach for path disambiguation
 - **[meshcore-bot](https://github.com/agessaman/meshcore-bot)** — Recency scoring and dual-hop anchor disambiguation
