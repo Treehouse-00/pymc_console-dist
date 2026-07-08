@@ -1,6 +1,6 @@
 {
   "name": "pymc_console",
-  "version": "0.9.332",
+  "version": "0.9.333",
   "description": "Vite + React Dashboard for openHop Repeater",
   "private": true,
   "type": "module",
