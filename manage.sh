@@ -384,17 +384,11 @@ do_upgrade() {
     print_banner
     echo -e "  ${DIM}Mode: Upgrade Console${NC}"
     echo ""
-    if ! preflight_check; then
-        print_repeater_missing_help
-        return 1
-    fi
 
-    if ! console_installed; then
-        print_error "Console is not installed. Run: sudo $0 install"
-        return 1
-    fi
-
-    # Self-update pymc_console repo and re-exec.
+    # Self-update pymc_console repo and re-exec. This must run before any
+    # other checks: preflight_check() and console_installed() below are part
+    # of this same script, so if SCRIPT_DIR is stale, their results (and
+    # everything else in this run) can't be trusted until we're current.
     # NOTE: this must run in the parent process (no subshell) so that `exec`
     # replaces the running manage.sh instead of just a subshell.
     if [[ -d "$SCRIPT_DIR/.git" ]]; then
@@ -413,6 +407,16 @@ do_upgrade() {
                 exec "$SCRIPT_DIR/manage.sh" upgrade
             fi
         fi
+    fi
+
+    if ! preflight_check; then
+        print_repeater_missing_help
+        return 1
+    fi
+
+    if ! console_installed; then
+        print_error "Console is not installed. Run: sudo $0 install"
+        return 1
     fi
 
     local ui_before ui_after
