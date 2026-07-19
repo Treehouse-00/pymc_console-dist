@@ -13,9 +13,9 @@ openHop Console gives you full visibility into your MeshCore network — packet 
 
 ### Requirements
 
-- Raspberry Pi (3, 4, 5, or Zero 2 W)
-- LoRa radio module (SX1262 or SX1276)
-- Raspberry Pi OS (Bookworm recommended)
+- An **OpenHop Repeater** running on a Raspberry Pi or Luckfox device.
+- A **Proxmox LXC container**. You can install one using the [LXC installation script from the OpenHop repository](https://github.com/openhop-dev/openhop_repeater#proxmox-lxc-installation).
+- **Docker** with the `openhop/openhop-repeater` image. The `main` and `dev` builds include the latest version of the Console. 
 
 ### Prerequisite: openHop Repeater
 
@@ -32,7 +32,7 @@ Repeater handles system dependencies, the `/opt/openhop_repeater` virtualenv, ra
 ### Install the Console
 
 ```bash
-git clone https://github.com/Treehouse-00/pymc_console.git pymc_console
+git clone https://github.com/Treehouse-00/pymc_console-dist pymc_console
 cd pymc_console
 sudo bash manage.sh install
 ```
