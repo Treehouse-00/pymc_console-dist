@@ -1,25 +1,42 @@
 # openHop Console
 
-[![GitHub Release](https://img.shields.io/github/v/release/Treehouse-00/pymc_console)](https://github.com/Treehouse-00/pymc_console/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/Treehouse-00/pymc_console-dist)](https://github.com/Treehouse-00/pymc_console-dist/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A real-time web dashboard for [MeshCore](https://meshcore.io/) LoRa mesh repeaters.
+A real-time operations console for [MeshCore](https://meshcore.io/) LoRa mesh repeaters.
 
-openHop Console gives you full visibility into your MeshCore network — packet flow, topology, signal quality, RF metrics, GPS diagnostics, and radio configuration — through a single browser tab. It layers on top of [openHop Repeater](https://github.com/openhop-dev/openhop_repeater) without replacing the Repeater service.
+openHop Console turns the live API and packet stream from [openHop Repeater](https://github.com/openhop-dev/openhop_repeater) into one browser workspace for network health, packet investigation, mapping, messaging, configuration, and system diagnostics. It is a static React application served by Repeater; it does not replace or fork the Repeater service.
 
----
+![openHop Console dashboard](docs/images/dashboard-current.jpg)
 
-## Quick Start
+## Current experience
 
-### Requirements
+The primary navigation is organized around the tasks operators return to most:
 
-- An **OpenHop Repeater** running on a Raspberry Pi or Luckfox device.
-- A **Proxmox LXC container**. You can install one using the [LXC installation script from the OpenHop repository](https://github.com/openhop-dev/openhop_repeater#proxmox-lxc-installation).
-- **Docker** with the `openhop/openhop-repeater` image. The `main` and `dev` builds include the latest version of the Console. 
+- **Dashboard** — live traffic, recent packets, mesh health, SpamGuard, and node context. On large 16:9 displays it becomes a pane-of-glass view.
+- **Map** — contact and link visualization, topology analysis, GPS diagnostics, and wardriving overlays.
+- **Contacts** — searchable node inventory with signal, role, recency, and location context.
+- **Packets** — packet history plus the byte-level **Wire Inspector**.
+- **Statistics** — traffic composition, airtime, RF health, signal quality, and network makeup.
+- **Messages** — Companion and Room Server workspaces.
+- **Configuration** — repeater, radio hardware, routing policy, observer, and client-access controls.
+- **System** — resources, sensors, logs, storage, recovery, diagnostics, and terminal access.
 
-### Prerequisite: openHop Repeater
+Related tools appear as tabs inside each workspace instead of nested sidebar menus. The left control shelf remains available for uptime, Signal Lab status, session controls, noise-floor telemetry, version information, and sign-out. The same hierarchy is retained at compact mobile breakpoints.
 
-The Console dashboard plugs into an existing [openHop Repeater](https://github.com/openhop-dev/openhop_repeater) install. If you don't already have it running, install Repeater first using the Repeater repo's `manage.sh`:
+## Install
+
+### Choose a deployment path
+
+| Environment | Console flow |
+|---|---|
+| Raspberry Pi or Luckfox host | Install openHop Repeater, then install Console with the commands below. |
+| Proxmox LXC | Create the Repeater container with the [openHop LXC installer](https://github.com/openhop-dev/openhop_repeater#proxmox-lxc-installation); then install Console if it is not already present. |
+| Docker | The `main` and `dev` variants of `openhop/openhop-repeater` already include the matching Console build. No separate Console install is required. |
+
+### 1. Install openHop Repeater
+
+Console requires a working Repeater backend. Follow the [openHop Repeater installation guide](https://github.com/openhop-dev/openhop_repeater), or use its installer:
 
 ```bash
 git clone https://github.com/openhop-dev/openhop_repeater.git
@@ -27,409 +44,230 @@ cd openhop_repeater
 sudo bash ./manage.sh install
 ```
 
-Repeater handles system dependencies, the `/opt/openhop_repeater` virtualenv, radio/GPIO configuration, `/etc/openhop_repeater/config.yaml`, and the `openhop-repeater` systemd service.
+Repeater owns the Python environment, radio and GPIO setup, `/etc/openhop_repeater/config.yaml`, authentication, and the `openhop-repeater` systemd service.
 
-### Install the Console
+### 2. Install Console
+
+Clone the public distribution repository on the same host:
 
 ```bash
-git clone https://github.com/Treehouse-00/pymc_console-dist pymc_console
+cd ~
+git clone https://github.com/Treehouse-00/pymc_console-dist.git pymc_console
 cd pymc_console
 sudo bash manage.sh install
 ```
 
-This downloads the latest Console release, extracts it to `/opt/pymc_console/web/html/`, and points Repeater's `web.web_path` at it. Open `http://<your-repeater-ip>:8000` in a browser.
+The installer:
 
-### Upgrade the Console
+1. Verifies that openHop Repeater is installed.
+2. Downloads the latest `pymc-ui-latest.tar.gz` release.
+3. Extracts the static app to `/opt/pymc_console/web/html/`.
+4. On a fresh install, sets `web.web_path` in `/etc/openhop_repeater/config.yaml` when `yq` is available.
+5. Leaves Repeater, Core, radio configuration, and service lifecycle untouched.
+
+Open `http://<repeater-ip>:8000/` and sign in with the credentials configured for Repeater.
+
+> Port 8000 is intended for a trusted LAN or VPN. Do not expose the Repeater API and Console directly to the public internet.
+
+### Upgrade
 
 ```bash
-cd pymc_console
+cd ~/pymc_console
 sudo bash manage.sh upgrade
 ```
 
-Refreshes the dashboard assets in place. Your `web_path` setting is preserved. Repeater, core, and config are untouched. For upgrading openHop Repeater itself, use the Repeater repo's `manage.sh`.
+Upgrade first fast-forwards the local distribution checkout to `origin/main`, then refreshes the dashboard assets from the latest release. The existing `web.web_path` is preserved. Upgrade Repeater separately with the Repeater repository's `manage.sh`.
 
-### Uninstall the Console
+### Uninstall
 
 ```bash
-cd pymc_console
+cd ~/pymc_console
 sudo bash manage.sh uninstall
 ```
 
-Removes `/opt/pymc_console` and this repo. openHop Repeater is **not** touched — use the Repeater repo's `manage.sh` to remove it.
+This removes `/opt/pymc_console` and, after confirmation, the Console checkout. It does not uninstall openHop Repeater or modify its radio setup.
 
-### Non-interactive Mode
+### Automation
 
-All prompts can be auto-confirmed for automation:
+Use `--yes`/`-y` or `ASSUME_YES=1` to auto-confirm prompts:
 
 ```bash
 sudo bash manage.sh --yes install
 ASSUME_YES=1 sudo -E bash manage.sh upgrade
 ```
 
----
+Set `NO_COLOR=1` for plain output. Run `sudo bash manage.sh --help` for the complete command summary.
 
-## How It Fits Together
+## Product tour
 
+### Map and topology
+
+![Map workspace](docs/images/map-current.jpg)
+
+- MapLibre-based contact and path visualization with node-role and link-quality filters
+- Deep Analysis using Viterbi HMM path disambiguation for colliding two-character prefixes
+- Confidence-weighted topology edges, ghost-node discovery, terrain, and wardriving overlays
+- GPS diagnostics within the same Map workspace
+
+### Packet investigation
+
+![Packet history workspace](docs/images/packets-current.jpg)
+
+- Searchable, filterable packet history with route, status, source, and signal context
+- Packet detail with resolved paths, hop confidence, payload fields, and raw bytes
+- Wire Inspector for the live decode pipeline and byte-level troubleshooting
+- Capture and export tools for reproducible diagnostics
+
+### Statistics and RF health
+
+![Statistics workspace](docs/images/statistics-current.jpg)
+
+- Traffic and airtime analysis across selectable time windows
+- Packet-type distribution, network composition, and link-quality views
+- Noise-floor, collision, LBT, and RF-health diagnostics
+- Client-side packet cache and analysis pipeline for responsive exploration
+
+### Operations and configuration
+
+- Live Repeater configuration for identity, operating mode, radio settings, routing policy, observer behavior, and client access
+- Companion and Room Server messaging tools
+- CPU, memory, disk, temperature, sensor, database, backup, log, and recovery views
+- Built-in terminal mapped to Repeater API operations
+- Breeze Dark and Breeze Light themes with responsive desktop and mobile layouts
+
+## Navigation reference
+
+Top-level routes are stable entry points. Workspace roots redirect to their first actionable view where appropriate.
+
+| Workspace | Entry route | Contextual views |
+|---|---|---|
+| Dashboard | `/` | Pane-of-glass operational overview |
+| Map | `/map` | Map, GPS |
+| Contacts | `/contacts` | Contact inventory and detail |
+| Packets | `/packets` | History, Wire Inspector (`/packets/raw`) |
+| Statistics | `/statistics` | Summary, RF Health |
+| Messages | `/messages` | Companion, Room Server |
+| Configuration | `/configuration` | Repeater, Radio Hardware, Routing & Policy, Observer, Client Access |
+| System | `/system` | Resources, Sensors, Logs, Storage, Recovery, Diagnostics, Terminal |
+
+Legacy direct routes continue to redirect into the current workspace structure. Deprecated experimental views are intentionally omitted from primary navigation.
+
+## Architecture
+
+```text
+Browser
+  └─ openHop Console (React + TypeScript + Vite)
+       ├─ REST API: configuration, history, analytics, system state
+       ├─ WebSocket: live radio and packet events
+       ├─ IndexedDB: local packet history and analysis cache
+       └─ Web workers: bucketing, decoding, and topology analysis
+                    │
+                    ▼
+       openHop Repeater (Python service, port 8000)
+       ├─ authentication and API
+       ├─ packet forwarding and persistence
+       ├─ radio and GPIO control
+       └─ openHop Core / MeshCore protocol implementation
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    openHop Console                          │
-│            (this repo — web dashboard UI)                   │
-│                                                             │
-│  • React SPA served on port 8000                            │
-│  • Real-time packets, topology, stats, radio config         │
-│  • manage.sh installs/upgrades the Console dashboard only   │
-└─────────────────────┬───────────────────────────────────────┘
-                      │ uses API from
-┌─────────────────────▼───────────────────────────────────────┐
-│                    openHop Repeater                          │
-│              (openHop repeater daemon)                       │
-│                                                             │
-│  • Python daemon running the LoRa repeater                  │
-│  • REST API + WebSocket on port 8000                        │
-│  • Packet forwarding, logging, radio control                │
-└─────────────────────┬───────────────────────────────────────┘
-                      │ built on
-┌─────────────────────▼───────────────────────────────────────┐
-│                    openHop Core                              │
-│              (MeshCore protocol library)                     │
-│                                                             │
-│  • Low-level MeshCore protocol implementation               │
-│  • Radio drivers (SX1262, SX1276)                           │
-│  • Packet encoding/decoding                                 │
-└─────────────────────────────────────────────────────────────┘
-```
 
-**Key points:**
-- Console does **not** replace Repeater — they work together
-- Repeater is installed separately using openHop Repeater's `manage.sh`; Console's `manage.sh` only layers the dashboard on top
-- You can upgrade Console independently without touching Repeater
+Console is deployed as static assets under `/opt/pymc_console/web/html/`. Repeater serves the SPA and the same-origin API, which avoids a second production service or cross-origin configuration.
 
----
+### Analysis pipeline
 
-## Features
+MeshCore paths contain short node prefixes, so multiple nodes may match a hop. Console uses a Viterbi hidden Markov model to select the most probable path from known candidates plus an unknown-node state. Scoring combines observation recency, prefix co-occurrence, path position, geographic plausibility, and measured edge evidence. The resulting topology powers path confidence, ghost-node discovery, link analysis, and TX-delay recommendations.
 
-### Topology Analysis
+The frontend also contains a TypeScript MeshCore protocol implementation for binary frame parsing, packet-type decoding, channel-key derivation, and group-text decryption.
 
-Reconstructs your network's structure from packet paths using a **Viterbi HMM decoder** — resolving prefix collisions with physics-based RF constraints and real-world observation evidence.
+## Management boundaries
 
-![Topology Analysis](docs/images/analyzer-overview.gif)
+`manage.sh` is intentionally Console-only:
 
-- **One-click Deep Analysis** from up to 14 days of packet history
-- **Viterbi HMM decoding** — resolves 2-char prefix collisions using geographic distance and LoRa range constraints
-- **Ghost node discovery** — detects unknown repeaters when no known candidate fits
-- **7-phase topology pipeline** — directional edges, betweenness centrality, mobile detection, TX delay recommendations, path health scoring
-- **3D terrain** — AWS Terrarium elevation with hillshading; markers and edges drape onto the landscape
-- **Wardriving overlay** — H3 hexagonal coverage tiles with SNR-based coloring
-- **Edge confidence** — line thickness scales with observation count; color indicates certainty
+| Command | Console action | Repeater impact |
+|---|---|---|
+| `install` | Installs the latest dashboard into `/opt/pymc_console/web/html/` | Sets `web.web_path` on first install when possible |
+| `upgrade` | Self-updates the checkout and replaces dashboard assets | Preserves Repeater configuration and service state |
+| `uninstall` | Removes Console assets and its checkout after confirmation | Does not uninstall Repeater |
 
-### Link Quality Radar
-
-Polar chart placing all contacts at their actual compass bearing and distance from your node.
-
-![Link Quality Polar](docs/images/linkquality-demo.gif)
-
-- **Zero-hop neighbors** colored by SNR (green → yellow → orange → red)
-- **Multi-hop contacts** at 33% opacity to distinguish direct RF from relayed
-- **Hover tooltips** with full signal metrics (RSSI, SNR, distance, last seen)
-
-### Statistics Dashboard
-
-Comprehensive RF metrics and network composition analysis.
-
-![Statistics View](docs/images/statsview-expose.gif)
-
-- **Airtime utilization** — RX/TX stacked area charts with peak and mean metrics
-- **Packet type distribution** — treemap of ADVERT, TXT_MSG, ACK, TRACE, etc.
-- **Network composition** — repeater / companion / room server breakdown
-- **Noise floor heatmap** — interference patterns over time
-- **Disambiguation health** — Viterbi confidence metrics and ghost node stats
-- **TX delay recommendations** — slot-based timing optimization per node role
-
-### Packet Path Tracing
-
-Click any packet to visualize its route through the mesh with hop-by-hop confidence.
-
-![Path Trace Demo](docs/images/trace-demo.gif)
-
-- **Confidence coloring** — Green (100%), Yellow (50–99%), Orange (25–49%), Red (<25%), Gray (ghost)
-- **Interactive map** showing resolved path with intermediate hops
-- **Signal details** — RSSI, SNR, and timing per packet
-- **Byte-level breakdown** — header fields, payload structure, raw hex
-
-### Themes & Terminal
-
-Two polished color schemes and a built-in CLI for direct repeater interaction.
-
-![Themes and Terminal](docs/images/terminal-and-themes.gif)
-
-- **Breeze Dark / Breeze Light** — KDE Breeze-inspired themes with full design token system
-- **Terminal** — interactive CLI mapped to API endpoints (get/set radio, ping, diagnostics)
-- **Packet capture** — `start cap` / `end cap` / `export cap` for timed diagnostic snapshots
-- **Live logs** — streaming from repeater with DEBUG/INFO toggle
-
----
-
-## All Pages at a Glance
-
-| Page | Route | What it does |
-|------|-------|-------------|
-| **Dashboard** | `/` | Live packet counters, sparkline trends, LBT widgets, recent packets |
-| **Packets** | `/packets` | Searchable packet history with detail modal, path visualization, byte breakdown |
-| **Contacts** | `/contacts` | MapLibre GL map with topology edges, ghost nodes, terrain, wardriving overlay |
-| **Statistics** | `/statistics` | µPlot charts — airtime, packet types, noise floor, signal scatter, network composition |
-| **Mesh Graph** | `/meshgraph` | GPU-accelerated force-directed graph (Cosmograph) |
-| **System** | `/system` | CPU, memory, disk, temperature, processes, network I/O |
-| **Logs** | `/logs` | Live log stream with level filtering |
-| **Terminal** | `/terminal` | Interactive CLI — MeshCore commands, ping, diagnostics, captures |
-| **Configuration** | `/configuration` | Radio settings, TX delays, transport keys, identity, theme, stealth location |
-
----
-
-## Management
-
-### manage.sh Commands
-
-`manage.sh` is Console-only. Service control, status, logs, updates, and radio/GPIO configuration are all handled by openHop Repeater.
+Use Repeater's installer or standard service tools for backend lifecycle:
 
 ```bash
-sudo bash manage.sh --help
+sudo systemctl status openhop-repeater
+sudo systemctl restart openhop-repeater
+sudo journalctl -u openhop-repeater -f
 ```
-
-| Verb | Action |
-|------|--------|
-| `install` | Install the Console dashboard into `/opt/pymc_console` and point `web_path` at it. Requires openHop Repeater to be installed. |
-| `upgrade` | Refresh the dashboard assets in place. Preserves your `web_path` and self-updates this repo from `origin/main`. Repeater stays untouched. |
-| `uninstall` | Remove `/opt/pymc_console` and this repo. Does NOT touch openHop Repeater. |
-
-Flags: `--yes` / `-y` (or `ASSUME_YES=1`) auto-confirms prompts; `NO_COLOR=1` disables ANSI output.
-
-### Radio & GPIO Configuration
-
-Radio and GPIO settings are managed by openHop Repeater:
-
-```bash
-cd ~/openhop_repeater && sudo bash ./manage.sh
-```
-
-Or edit the config directly:
-
-```yaml
-# /etc/openhop_repeater/config.yaml
-radio:
-  frequency: 927875000      # Hz
-  spreading_factor: 7       # SF7–SF12
-  bandwidth: 62500          # Hz
-  tx_power: 28              # dBm
-  coding_rate: 6            # 4/5, 4/6, 4/7, 4/8
-```
-
-> You can also change radio settings live from the **Configuration** page in the dashboard — no SSH required.
-
-### DIO2 / DIO3 Pin Configuration
-
-Some LoRa modules need specific DIO pin settings. These are **independent** — enabling one does not affect the other:
-
-- **DIO3 (TCXO)** — set `use_dio3_tcxo: true` if your module has a temperature-compensated oscillator on DIO3
-- **DIO2 (RF Switch)** — set `use_dio2_rf: true` if your module uses DIO2 for TX/RX antenna switching
-
-```yaml
-radio:
-  use_dio3_tcxo: true
-  use_dio2_rf: true       # dev branch only
-```
-
-### Service Management
-
-Service lifecycle belongs to openHop Repeater's systemd unit. Use `systemctl` / `journalctl` directly:
-
-```bash
-sudo systemctl status openhop-repeater     # Check status
-sudo systemctl restart openhop-repeater    # Restart
-sudo journalctl -u openhop-repeater -f     # Live logs
-```
-
-`manage.sh` does not wrap these commands — they are Repeater's responsibility.
-
----
-
-## Directory Layout
-
-After installation:
-
-```
-~/pymc_console/                ← This repo (cloned by you)
-~/openhop_repeater/            ← openHop Repeater source (cloned by you)
-
-/opt/openhop_repeater/         ← Installed Repeater (owned by Repeater manage.sh)
-/opt/pymc_console/web/html/    ← Installed dashboard (owned by our manage.sh)
-/etc/openhop_repeater/config.yaml ← Radio + Repeater config (we patch web.web_path only)
-/var/log/openhop_repeater/     ← Repeater log files
-```
-
----
-
-## Hardware
-
-### Supported Boards
-
-- Raspberry Pi 3, 4, 5
-- Raspberry Pi Zero 2 W
-- Any SBC with SPI and GPIO (untested but likely works)
-
-### Tested Radio Modules
-
-- Waveshare SX1262 HAT
-- Ebyte E22 modules
-- LILYGO T3S3 (via USB serial)
-- Heltec LoRa 32
-
-### Connection
-
-LoRa module connects via **SPI** with GPIO pins for reset, busy, and DIO1. Pin mapping is configured during installation via openHop Repeater's manage.sh.
-
----
 
 ## Troubleshooting
 
-### Dashboard won't load
-
-1. **Is the service running?**
-   ```bash
-   sudo systemctl status openhop-repeater
-   ```
-2. **Is port 8000 responding?**
-   ```bash
-   curl -s http://localhost:8000/api/stats | head -c 100
-   ```
-3. **Check for errors:**
-   ```bash
-   sudo journalctl -u openhop-repeater -n 50
-   ```
-
-### Login fails / "Error 200"
-
-Usually caused by a version mismatch between Console and Repeater. Update both:
+### Console does not load
 
 ```bash
-# Update openHop Repeater
-cd ~/openhop_repeater && sudo bash ./manage.sh upgrade
+sudo systemctl status openhop-repeater
+curl -s http://localhost:8000/api/stats | head -c 200
+sudo journalctl -u openhop-repeater -n 100
+```
 
-# Update the Console dashboard
+Confirm that `/etc/openhop_repeater/config.yaml` contains:
+
+```yaml
+web:
+  web_path: /opt/pymc_console/web/html
+```
+
+If `yq` was unavailable during install, the installer prints the exact command needed to set this value.
+
+### Login fails or the UI and API disagree
+
+Update Repeater and Console independently, then hard-refresh the browser:
+
+```bash
+cd ~/openhop_repeater && sudo bash ./manage.sh upgrade
 cd ~/pymc_console && sudo bash manage.sh upgrade
 ```
 
-### No packets being received
+Use `Cmd+Shift+R` on macOS or `Ctrl+Shift+R` on Linux/Windows to bypass a stale cached `index.html`.
 
-1. **SPI enabled?**
-   ```bash
-   ls /dev/spidev*
-   ```
-   If no devices listed, enable SPI via `raspi-config` → Interface Options → SPI.
+### Console loads but no packets appear
 
-2. **GPIO correct?** Run openHop Repeater's manage.sh → Configure GPIO and verify pin assignments match your wiring.
+- Allow a fresh Repeater 30–60 seconds to initialize.
+- Confirm radio frequency, GPIO, and SPI/USB transport in Repeater configuration.
+- Check the live service log with `journalctl`.
+- In browser developer tools, verify that the same-origin packet WebSocket remains connected.
 
-3. **Frequency match?** Confirm your radio frequency matches the rest of your mesh network.
+## Development
 
-4. **Check the logs:**
-   ```bash
-   sudo journalctl -u openhop-repeater -n 100 | grep -i "error\|fail\|radio"
-   ```
+The source repository uses React 18, TypeScript, Vite 6, Zustand, MapLibre GL, µPlot, Cosmograph, and xterm.js.
 
-### Service won't start
+Installing source dependencies requires access to the Motion+ registry. CI injects the repository's `MOTION_TOKEN` into the `__MOTION_TOKEN__` placeholders in `package.json` and `package-lock.json`; use the same organization credential for a fresh local install.
 
 ```bash
-# Check for config syntax errors
-python3 -c "import yaml; yaml.safe_load(open('/etc/openhop_repeater/config.yaml'))"
-
-# Check for Python dependency issues
-/opt/openhop_repeater/venv/bin/python -m pip show openhop_repeater openhop_core
+git clone https://github.com/Treehouse-00/pymc_console.git
+cd pymc_console/frontend
+cp .env.example .env.local
+# Set VITE_API_URL in .env.local to a running Repeater, then:
+npm install
+npm run dev
 ```
 
-### "Radio presets file not found" during install
+Useful checks:
 
-Non-fatal warning. The installer fetches presets from an API; if unavailable, it falls back to common defaults. Installation continues normally.
-
-### Dashboard loads but shows no data
-
-- The dashboard requires authentication. If you see the login page, use the credentials you set during openHop Repeater installation.
-- If you're on a fresh install, allow 30–60 seconds for the repeater to initialize and begin receiving packets.
-- Check that WebSocket is connecting: open browser DevTools → Network → WS. You should see an active `/ws/packets` connection.
-
-### Upgrade didn't take effect
-
-Hard-refresh your browser (`Cmd+Shift+R` / `Ctrl+Shift+R`) to clear the cached SPA bundle. Vite hashes filenames, but the browser may still cache `index.html`.
-
----
-
-## Under the Hood
-
-### Viterbi Path Disambiguation
-
-MeshCore packets contain 2-character hex prefixes representing the route through the mesh:
-
-```
-Path: ["FA", "79", "24", "19"]
-       Origin → Hop1 → Hop2 → Local
+```bash
+npm run typecheck
+npm run test
+npm run lint
+npm run build
 ```
 
-Multiple nodes can share the same 2-char prefix (1-in-256 collision). The system uses a **Viterbi HMM decoder** to find the most probable sequence of actual nodes:
-
-- **States** — all candidate nodes matching each prefix, plus a "ghost" state for unknowns
-- **Priors** — recency-weighted (recently-seen nodes are more likely)
-- **Transitions** — physics-based costs using geographic distance and LoRa range constraints
-- **Key principle** — when edge observations have ≥80% confidence, real-world evidence overrides physics
-
-Before Viterbi decoding, candidates are scored using **four-factor analysis**:
-
-1. **Position (15%)** — typical path positions for this prefix
-2. **Co-occurrence (15%)** — which prefixes appear adjacent
-3. **Geographic (35%)** — distance to dual-hop anchor points
-4. **Recency (35%)** — exponential decay `e^(-hours/12)`
-
-### Ghost Node Discovery
-
-When no known candidate is geographically plausible, the decoder selects a "ghost" state. These are clustered and classified into four tiers:
-
-- **Confirmed** — very high observation count, consistent neighbors, plausible location
-- **Likely** — strong evidence, probably a real undiscovered repeater
-- **Possible** — moderate evidence, worth investigating
-- **Noise** — low evidence, likely path artifacts
-
-Ghost clusters include RF-constrained location estimates, temporal consistency analysis, and collision detection against known nodes.
-
-### 7-Phase Topology Pipeline
-
-1. **Directional edge tracking** — forward/reverse counts, symmetry ratio
-2. **Path sequence registry** — all observed paths, canonical detection
-3. **Flood vs direct classification** — per-edge routing type
-4. **Edge betweenness centrality** — backbone identification
-5. **Mobile repeater detection** — path volatility analysis
-6. **TX delay recommendations** — slot-based timing optimization
-7. **Path health scoring** — combined health, weakest link, latency
-
-### Protocol Library
-
-The frontend includes a complete TypeScript port of the MeshCore protocol — binary packet parsing, header bit-field extraction, per-type payload decoders, channel key derivation, and GRP_TXT decryption (SHA-256, AES-ECB, pure JS — no native dependencies).
-
----
-
-## Standalone UI Installation
-
-If you already have openHop Repeater running and just want the dashboard, see [INSTALL.md](INSTALL.md) for manual tar.gz installation without manage.sh.
-
----
+Production builds are written to `frontend/out/`; `npm run build:static` also copies the packaged output to `frontend/dist/`.
 
 ## License
 
-MIT — See [LICENSE](LICENSE)
+MIT — see [LICENSE](LICENSE).
 
 ## Credits
 
-Built on the work of:
-
-- **[RightUp](https://github.com/rightup)** — Creator of the original pyMC Repeater/Core projects and a maintainer of the MeshCore Python ecosystem
-- **[openHop Repeater](https://github.com/openhop-dev/openhop_repeater)** — Core repeater daemon
-- **[openHop Core](https://github.com/openhop-dev/openhop_core)** — Protocol library
-- **[MeshCore](https://meshcore.io/)** — The MeshCore project and community
-- **[d40cht/meshcore-connectivity-analysis](https://github.com/d40cht/meshcore-connectivity-analysis)** — Viterbi HMM approach for path disambiguation
-- **[meshcore-bot](https://github.com/agessaman/meshcore-bot)** — Recency scoring and dual-hop anchor disambiguation
+- [RightUp](https://github.com/rightup) — creator of the original pyMC Repeater/Core projects and a maintainer of the MeshCore Python ecosystem
+- [openHop Repeater](https://github.com/openhop-dev/openhop_repeater) — Repeater daemon and Console backend
+- [openHop Core](https://github.com/openhop-dev/openhop_core) — MeshCore protocol library
+- [MeshCore](https://meshcore.io/) — MeshCore project and community
+- [d40cht/meshcore-connectivity-analysis](https://github.com/d40cht/meshcore-connectivity-analysis) — Viterbi HMM approach for path disambiguation
+- [meshcore-bot](https://github.com/agessaman/meshcore-bot) — recency scoring and dual-hop anchor disambiguation
