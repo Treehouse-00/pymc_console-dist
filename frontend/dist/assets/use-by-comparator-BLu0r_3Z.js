@@ -1,0 +1,1 @@
+import{r as l}from"./index-Sv8AJRuI.js";function u(n,t){return n!==null&&t!==null&&typeof n=="object"&&typeof t=="object"&&"id"in n&&"id"in t?n.id===t.id:n===t}function f(n=u){return l.useCallback((t,o)=>{if(typeof n=="string"){let i=n;return(t==null?void 0:t[i])===(o==null?void 0:o[i])}return n(t,o)},[n])}export{f as u};
