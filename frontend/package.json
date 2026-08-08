@@ -7,17 +7,17 @@
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc --noEmit",
-    "build": "vite build",
+    "build": "vite build && node scripts/precompress-assets.mjs out",
     "build:static": "npm run build && npm run package",
     "package": "rm -rf dist && mkdir -p dist && cp -r out/* dist/",
     "preview": "vite preview",
+    "precompress": "node scripts/precompress-assets.mjs out",
     "lint": "eslint",
     "test": "vitest",
     "test:coverage": "vitest run --coverage",
     "generate:geo-channels": "node scripts/generate-geo-channels.cjs"
   },
   "dependencies": {
-    "@cosmograph/react": "^2.0.1",
     "@fontsource/inter": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@fontsource/noto-sans": "^5.2.10",
