@@ -7,6 +7,17 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) wit
 
 ---
 
+## [0.9.353] - 2026-08-18
+### Added
+- Configuration at a glance: every module is a collapsible bar that summarizes its key values while closed, grouped under Device / Network / Access & Security / This Console headings, with Expand all / Collapse all and a desktop section rail that follows your scroll. On phones, modules start collapsed so the page opens as a table of contents.
+- Find a setting: press `/` and type — matching rows light up while everything else dims (nothing hides), matching modules open themselves, and Esc clears. Related settings cross-link with a jump-and-flash locator.
+- Tap the bunny in the mobile header. Go on, tap it.
+### Changed
+- Module editing commits from a bar at the module's bottom edge that stays on screen while you scroll a tall module — Save and Cancel never clip at any width.
+- Node Info shows each identity as its own two-line row (name, then role and full-width ID) and scrolls internally past five rows, so large fleets never stretch the page.
+- API access (CORS) moved out of App Settings into its own module under Access & Security.
+- The header bunny faces right now.
+
 ## [0.9.352] - 2026-08-18
 ### Changed
 - The time-range selector has one persistent home: the top-right corner of the page title, on every page and at every screen size (compact on phones). Dashboard, Statistics, Packet History, RF Health, and Map & Contacts each return a full row to content.
