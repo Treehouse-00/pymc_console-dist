@@ -7,6 +7,11 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) wit
 
 ---
 
+## [0.9.352] - 2026-08-18
+### Changed
+- The time-range selector has one persistent home: the top-right corner of the page title, on every page and at every screen size (compact on phones). Dashboard, Statistics, Packet History, RF Health, and Map & Contacts each return a full row to content.
+- Packet History's filters are now a collapsible bar on the Filters card itself — collapsed by default on phones with the Transport/V2 quick-toggles still usable, expanded by default on larger screens (and collapsible there for the first time). The floating filter button is gone.
+
 ## [0.9.351] - 2026-08-18
 ### Added
 - Configuration modules now edit as one unit: an Edit action per card with a single Save/Cancel for every field. Read mode is a dense settings list, and editing swaps each value to an input in place — the layout never reshuffles between modes.
