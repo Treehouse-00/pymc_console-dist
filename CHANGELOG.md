@@ -7,6 +7,15 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) wit
 
 ---
 
+## [0.9.351] - 2026-08-18
+### Added
+- Configuration modules now edit as one unit: an Edit action per card with a single Save/Cancel for every field. Read mode is a dense settings list, and editing swaps each value to an input in place — the layout never reshuffles between modes.
+### Changed
+- Mobile-first density pass across the app: display text, form controls, card padding, and board gaps all step down together on phones through one token system, so screens fit noticeably more without shrinking body text.
+- Unit Display and the Configuration cards follow a single label-left / value-right row grammar; the Repeat and Duty Cycle switches share one row.
+### Fixed
+- Mobile overflow collisions: card-header chips no longer clip at card edges, badges never wrap mid-content, widget status chips wrap below their value, and the Link Quality radar's zoom controls moved to a full-width band below the chart on phones instead of overlapping it.
+
 ## [0.9.350] - 2026-08-18
 ### Added
 - In-app release notes: tap the version badge in the sidebar or mobile header for "What's new" — the current release's notes plus full collapsible history, bundled with the build so it works offline. A small dot marks unread notes after an upgrade.
