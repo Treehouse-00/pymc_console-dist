@@ -7,6 +7,13 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) wit
 
 ---
 
+## [0.9.350] - 2026-08-18
+### Added
+- In-app release notes: tap the version badge in the sidebar or mobile header for "What's new" — the current release's notes plus full collapsible history, bundled with the build so it works offline. A small dot marks unread notes after an upgrade.
+- GitHub releases now publish each version's changelog section as the release notes, and CHANGELOG.md ships with the distribution. Bots can follow `releases.atom`, the `releases/latest` API, or the raw changelog — see "Following releases" in the README.
+### Changed
+- The release pipeline guarantees a changelog entry for every release (auto-generated from the release note when none is hand-written) and verifies the published tree before every push.
+
 ## [0.9.349] - 2026-08-18
 ### Added
 - Map & Contacts are now one page: the contacts table sits below the map, and clicking a located contact flies the map to that node and opens its details. Old `/contacts` links redirect.
