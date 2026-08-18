@@ -98,6 +98,19 @@ ASSUME_YES=1 sudo -E bash manage.sh upgrade
 
 Set `NO_COLOR=1` for plain output. Run `sudo bash manage.sh --help` for the complete command summary.
 
+### Following releases
+
+Release notes live in [CHANGELOG.md](CHANGELOG.md) and on each [GitHub release](https://github.com/dmduran12/pymc_console-dist/releases). For bots and automation:
+
+- **Atom feed** (RSS bots, Discord/Slack feed integrations):
+  `https://github.com/dmduran12/pymc_console-dist/releases.atom`
+- **Latest release JSON** (scripts and webhooks — no auth required; `tag_name`, `body`, assets):
+  `https://api.github.com/repos/dmduran12/pymc_console-dist/releases/latest`
+- **Raw changelog** (full history as markdown):
+  `https://raw.githubusercontent.com/dmduran12/pymc_console-dist/main/CHANGELOG.md`
+
+The console itself surfaces the same notes in-app: tap the version badge in the sidebar or mobile header for "What's new" and full release history.
+
 ## Product tour
 
 ### Map and topology
