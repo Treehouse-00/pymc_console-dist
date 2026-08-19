@@ -7,6 +7,10 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) wit
 
 ---
 
+## [0.9.354] - 2026-08-18
+### Fixed
+- First taps land reliably on touch devices. Packet History rows in duplicate groups or carrying trace tags — and chart legend entries — previously swallowed the first tap on iPhone/iPad (Safari consumed it as hover intent), needing a second tap to act. Hover-driven highlighting is now mouse/trackpad only, so every tap counts.
+
 ## [0.9.353] - 2026-08-18
 ### Added
 - Configuration at a glance: every module is a collapsible bar that summarizes its key values while closed, grouped under Device / Network / Access & Security / This Console headings, with Expand all / Collapse all and a desktop section rail that follows your scroll. On phones, modules start collapsed so the page opens as a table of contents.
