@@ -7,6 +7,26 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) wit
 
 ---
 
+## [0.9.355] - 2026-08-20
+### Added
+- The System page is rebuilt as bench hardware. A new instrument kit — seven-segment displays, annunciator lamp banks, LED bar meters, pixel marquees — replaces the generic cards: LOAD / STORAGE / HEAT / I/O lead the page as segmented readouts, CPU and memory draw on an amber dot-matrix telemetry face with channel-enable keys and an uptime counter, thermals and reserves read as ganged gauge modules with capacity towers, and the process table sits behind the same glass. Light mode renders the whole board as a vintage beige machine — warm molded plastic around screens that keep honest LCD physics (dark wells stay dark; graph faces trade amber phosphor for printed LCD ink).
+- The I/O card is an analogue throughput scope: a split TX/RX face whose thin trace rolls continuously right-to-left like paper under a fixed pen, with edge-lit glass, each channel's peak engraved on the face, and a since-boot odometer. Drawn ink is locked — a range change scales new ink only, so the trace never re-flows behind you.
+- Messages · Companion: delete a message from your local history. A trash key surfaces in the row's corner on hover — bottom-right for incoming messages, bottom-left for your own — behind a "Delete Message?" confirmation. Removal is local to this Console: mesh recipients keep their copies.
+- Page titles wear a C64-style faceplate: a molded nameplate lozenge riding a band of machined grooves, set in a new display voice.
+
+### Changed
+- Every page header follows one fixed anatomy: identity on the left, global page controls (settings, expand, refresh) in the right corner, the workspace tab rail on its own row, and page-content controls on a context rail beneath it. Nothing trades places between pages or breakpoints; on phones the corner controls drop to a fixed second deck instead of wrapping.
+- The workspace tab rail is a hardware key bank: rigid die-cut keys that fill the rail edge-to-edge and hold their size as you move between tabs — the chrome never shifts underfoot.
+- Header furniture shares one molded finish: selectors, advert keys, refresh, and status chips are all pressed from the same lozenge-and-track die, built purely from the house surface tokens.
+- Dialogs hold still. Every modal anchors by its header at a stable position and size — switching tabs or expanding sections inside a dialog no longer moves or resizes the frame. On phones, sheets bind to the visible viewport so the keyboard can't hide the actions, the body scrolls internally, and swipe-to-dismiss lives on the header.
+- Companion configuration reads in half the words: the connection-mode chooser is now a single settings row that expands on demand — and opens itself when the connection needs attention.
+- Configuration's find-a-setting search and Expand all / Collapse all share one rail beneath the tabs, with the bulk actions as proper control surfaces.
+
+### Fixed
+- The CPU/memory telemetry chart hydrates like a strip chart: from the very first sample, data prints at the right edge and grows leftward at a fixed pitch. It no longer stretches a young buffer across the whole face and re-compresses on every poll for the minutes the window takes to fill.
+- Header buttons on Client Access, System Logs, and Messages · Manage no longer render as ghost outlines — a paint-order bug was drawing the title's grooves above them.
+- Charts reliably follow their container when it shrinks instead of holding a stale wider width.
+
 ## [0.9.354] - 2026-08-18
 ### Fixed
 - First taps land reliably on touch devices. Packet History rows in duplicate groups or carrying trace tags — and chart legend entries — previously swallowed the first tap on iPhone/iPad (Safari consumed it as hover intent), needing a second tap to act. Hover-driven highlighting is now mouse/trackpad only, so every tap counts.
