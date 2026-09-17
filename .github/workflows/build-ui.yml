@@ -1,0 +1,113 @@
+# Build / Distribution Validation
+#
+# In the private source repo, validate and upload the committed dist/.
+# In the public distribution repo, validate metadata without storing UI in Git.
+# The actual public release is handled by sync-to-public.yml which
+# builds from source and pushes to the public distribution repo.
+#
+# For local development with proprietary files:
+#   npm run build:static  (builds and packages dist/)
+
+name: Build Validation
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Verify dist exists
+        run: |
+          if [ ! -d frontend/src ]; then
+            # Public distribution: generated UI lives in release downloads.
+            bash -n manage.sh
+            test -f frontend/package.json
+            if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+              # Omit a ref so this also works for pull_request refs such as
+              # "123/merge", which are not ordinary remote branch names.
+              git fetch --unshallow --no-tags origin
+            fi
+            if [ "$(git rev-list --count HEAD)" != "1" ] \
+              || [ "$(git rev-list --parents -n 1 HEAD | awk '{print NF}')" != "1" ]; then
+              echo "ERROR: public distribution must contain exactly one root commit"
+              exit 1
+            fi
+            if [ -n "$(git ls-files -- frontend/dist)" ]; then
+              echo "ERROR: public distribution must not track frontend/dist/"
+              exit 1
+            fi
+            echo "✓ Public installer/metadata validated (UI is release-only)"
+            exit 0
+          fi
+          if [ ! -d "frontend/dist" ] || [ ! -f "frontend/dist/index.html" ]; then
+            echo "ERROR: frontend/dist/ not found or incomplete."
+            echo "Build locally with 'npm run build:static' before pushing."
+            exit 1
+          fi
+          echo "✓ Pre-built dist/ found"
+          ls -la frontend/dist/
+
+      - name: Test public distribution pipeline
+        if: hashFiles('scripts/public-distribution.test.mjs') != ''
+        run: node --test scripts/public-distribution.test.mjs
+
+      - name: Test plugin catalogue proposal helper
+        if: hashFiles('scripts/test_update_plugin_catalogue.py') != ''
+        run: python3 -m unittest discover -s scripts -p 'test_update_plugin_catalogue.py' -v
+
+      # Guarded like the step above: this workflow is copied verbatim into the
+      # public distribution repository, which carries no scripts/ directory.
+      # An unguarded step there fails the whole validation run.
+      - name: Install a pinned yq for the installer tests
+        if: hashFiles('scripts/manage-sh.test.mjs') != ''
+        run: |
+          set -euo pipefail
+          sudo curl -fsSL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.53.6/yq_linux_amd64
+          echo "c5f056448f973ae7d39b5401949648a78f2dc1947d6a8eb65be60d5c504b9385  /usr/local/bin/yq" | sha256sum -c -
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
+      - name: Test the installer against every Repeater layout
+        if: hashFiles('scripts/manage-sh.test.mjs') != ''
+        run: node --test scripts/manage-sh.test.mjs
+      
+      - name: Get version info
+        run: |
+          VERSION=$(node -p "require('./frontend/package.json').version")
+          echo "Version: $VERSION"
+          
+          if [ -f "frontend/dist/VERSION" ]; then
+            DIST_VERSION=$(cat frontend/dist/VERSION)
+            echo "Dist version: $DIST_VERSION"
+            if [ "$VERSION" != "$DIST_VERSION" ]; then
+              echo "⚠️  Warning: package.json version ($VERSION) differs from dist VERSION ($DIST_VERSION)"
+              echo "Consider rebuilding with 'npm run build:static'"
+            fi
+          fi
+      
+      - name: Resolve safe ref name
+        id: ref_name
+        run: |
+          SAFE_REF_NAME="$(echo "${{ github.ref_name }}" | tr '/:@' '---')"
+          echo "safe_name=$SAFE_REF_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build artifacts (for inspection)
+        if: hashFiles('frontend/src/**') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: pymc-ui-${{ steps.ref_name.outputs.safe_name }}
+          path: frontend/dist/
+          retention-days: 7
